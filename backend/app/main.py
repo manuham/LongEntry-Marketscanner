@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import close_pool, get_pool
 from app.logging_config import setup_logging
-from app.routers import candles, config, health, markets
+from app.routers import analytics, candles, config, health, markets
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -54,3 +54,4 @@ app.include_router(health.router, prefix="/api")
 app.include_router(candles.router, prefix="/api")
 app.include_router(markets.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
