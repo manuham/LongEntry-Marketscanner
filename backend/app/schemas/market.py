@@ -19,3 +19,7 @@ class MarketConfigResponse(BaseModel):
     sl_percent: float = Field(serialization_alias="slPercent")
     tp_percent: float = Field(serialization_alias="tpPercent")
     week_start: str = Field(serialization_alias="weekStart")
+
+
+class OverrideRequest(BaseModel):
+    active: bool | None = None  # True/False = force, None = clear override

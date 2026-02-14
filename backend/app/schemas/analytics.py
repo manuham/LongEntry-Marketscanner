@@ -30,6 +30,7 @@ class SymbolAnalytics(BaseModel):
     final_score: float | None = None
     rank: int | None = None
     is_active: bool = False
+    is_manually_overridden: bool = False
     opt_entry_hour: int | None = None
     opt_sl_percent: float | None = None
     opt_tp_percent: float | None = None
@@ -55,6 +56,7 @@ class AnalysisSummary(BaseModel):
     final_score: float | None = None
     rank: int | None = None
     is_active: bool = False
+    is_manually_overridden: bool = False
     opt_entry_hour: int | None = None
     opt_sl_percent: float | None = None
     opt_tp_percent: float | None = None
