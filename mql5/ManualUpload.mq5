@@ -81,8 +81,12 @@ void OnStart()
 //+------------------------------------------------------------------+
 string BuildJSON(MqlRates &rates[], int startIdx, int endIdx)
   {
+   // Strip broker suffixes like ".cash" so symbol matches database
+   string symbol = _Symbol;
+   StringReplace(symbol, ".cash", "");
+
    string json = "{";
-   json += "\"symbol\":\"" + _Symbol + "\",";
+   json += "\"symbol\":\"" + symbol + "\",";
    json += "\"timeframe\":\"H1\",";
    json += "\"apiKey\":\"" + APIKey + "\",";
    json += "\"candles\":[";
