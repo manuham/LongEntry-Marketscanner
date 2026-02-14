@@ -416,21 +416,23 @@ Make sure you're still in the backend directory with the virtual environment act
 ```bash
 cd /opt/longentry/backend
 source venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
+
+> **Note:** We use port **8001** instead of the default 8000. If you have another app already running on a port (like a trading bot on 8000), you'll get an `address already in use` error. Just pick a different number (8001, 8002, etc.). We'll use 8001 throughout this guide.
 
 You should see output like:
 ```
 INFO:     Started server process
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Uvicorn running on http://0.0.0.0:8001
 ```
 
 Open a **second terminal window**, connect to your VPS via SSH again, and test:
 
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8001/api/health
 ```
 
 You should see:
@@ -473,7 +475,7 @@ You should see files like `index.html` and an `assets/` folder. These are the fi
 
 **Nginx** does two things for us:
 1. Serves the frontend dashboard files to your browser
-2. Forwards any `/api/` requests to the Python backend running on port 8000
+2. Forwards any `/api/` requests to the Python backend running on port 8001
 
 ### Step 5.1 — Create the Nginx configuration
 
@@ -494,7 +496,7 @@ server {
 
     # API requests — forward to Python backend
     location /api/ {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -584,7 +586,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/longentry/backend
 Environment=PATH=/opt/longentry/backend/venv/bin:/usr/bin:/bin
-ExecStart=/opt/longentry/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+ExecStart=/opt/longentry/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
 Restart=always
 RestartSec=5
 
@@ -812,7 +814,7 @@ Here's what you now have running:
 | Component | Status | How to check |
 |-----------|--------|-------------|
 | PostgreSQL | Running, 14 markets seeded | `psql -U longentry -d longentry -c "SELECT count(*) FROM markets;"` |
-| Backend API | Running as a service on port 8000 | `curl http://localhost/api/health` |
+| Backend API | Running as a service on port 8001 | `curl http://localhost/api/health` |
 | Frontend | Built and served by Nginx | Visit `http://YOUR_VPS_IP` in your browser |
 | Nginx | Running, proxying API requests | `systemctl status nginx` |
 | Backups | Daily at 3 AM | `ls /var/backups/longentry/` |
@@ -842,7 +844,7 @@ journalctl -u longentry -n 30
 Common causes:
 - Wrong database password in `.env`
 - PostgreSQL not running (`systemctl start postgresql`)
-- Port 8000 already in use by something else
+- Port 8001 already in use by something else (try 8002 and update Nginx + systemd configs to match)
 
 ### "Permission denied" errors
 
