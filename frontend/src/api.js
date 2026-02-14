@@ -14,6 +14,14 @@ export function fetchMarkets() {
   return apiFetch("/api/markets");
 }
 
+export function fetchAnalytics() {
+  return apiFetch("/api/analytics");
+}
+
+export function fetchSymbolAnalytics(symbol) {
+  return apiFetch(`/api/analytics/${symbol}`);
+}
+
 export function setApiKey(key) {
   localStorage.setItem("le_api_key", key);
   window.location.reload();
