@@ -190,7 +190,9 @@ The `\q` command exits the PostgreSQL prompt. You're back to the normal terminal
 
 ### Step 2.2 — Download the project code
 
-Navigate to a good location and download (clone) the project:
+You're still in the SSH terminal connected to your VPS. Now we'll download the project code from GitHub onto your server.
+
+`/opt` is a standard folder on Linux servers for installing optional software — it's the right place for our project.
 
 ```bash
 cd /opt
@@ -198,7 +200,12 @@ git clone https://github.com/manuham/LongEntry-Marketscanner.git longentry
 cd /opt/longentry
 ```
 
-This downloads all the code into `/opt/longentry/`. From now on, this is where the project lives on your server.
+What each command does:
+- `cd /opt` — moves into the `/opt` folder on your VPS
+- `git clone ...` — downloads the entire project from GitHub into a new folder called `longentry`
+- `cd /opt/longentry` — moves into the downloaded project folder
+
+From now on, `/opt/longentry/` is where the project lives on your server. All the remaining steps happen inside this folder.
 
 > **Note:** If the repo is private, you may need to authenticate with GitHub. Git will prompt you for credentials.
 
