@@ -683,25 +683,87 @@ You should see:
 [date] Cleaned up backups older than 7 days
 ```
 
-### Step 7.4 — Schedule automatic daily backups
+### Step 7.4 — Schedule automatic daily backups and weekly analysis
 
-Open the **crontab** (a schedule for automatic tasks):
+Both cron jobs (daily backup + Saturday analysis) can be installed with a single command:
 
 ```bash
-crontab -e
+bash /opt/longentry/scripts/install_crons.sh
 ```
 
-If it asks which editor to use, choose `nano` (usually option 1).
+This adds two entries to your crontab:
 
-Add this line at the bottom of the file:
+| Schedule | Job | What it does |
+|----------|-----|-------------|
+| `0 3 * * *` — Daily at 03:00 UTC | `backup_db.sh` | Backs up PostgreSQL, keeps last 7 days |
+| `0 6 * * 6` — Saturday at 06:00 UTC | `run_weekly_analysis.sh` | Runs technical scoring + backtests for all 14 markets |
+
+Verify the entries were added:
+
+```bash
+crontab -l
+```
+
+You should see both lines listed under `# --- LongEntry Market Scanner ---`.
+
+> **Note:** The install script is safe to run multiple times — it replaces existing LongEntry entries rather than duplicating them.
+
+#### What happens on Saturday at 06:00 UTC
+
+1. The cron job calls `run_weekly_analysis.sh`
+2. Which runs `python -m app.scripts.run_analysis` (the analysis engine)
+3. For each of the 14 markets, it:
+   - Fetches all H1 candles from the database
+   - Calculates technical metrics (trend, momentum, volatility) → `TechnicalScore`
+   - Runs a 2-year backtest over all parameter combinations → `BacktestScore`
+   - Combines scores into a `FinalScore`
+4. All 14 markets are ranked by `FinalScore`
+5. Top 5–6 markets (above the minimum score threshold) are set to `active`
+6. Results are stored in the `weekly_analysis` table
+7. The dashboard refreshes to show the new week's plan
+
+On Monday, each EA calls `GET /api/config/{symbol}` and receives the optimized parameters.
+
+#### How to run the analysis manually
+
+If you ever need to trigger analysis outside the Saturday schedule:
+
+```bash
+cd /opt/longentry/backend
+source venv/bin/activate
+python -m app.scripts.run_analysis
+```
+
+Or via the API:
+
+```bash
+curl -X POST http://localhost:8001/api/analytics/run \
+  -H "X-API-Key: YOUR_KEY_HERE"
+```
+
+#### Checking the analysis log
+
+```bash
+cat /var/log/longentry/analysis.log
+```
+
+A successful run looks like:
 
 ```
-0 3 * * * /bin/bash /opt/longentry/scripts/backup_db.sh >> /var/log/longentry/backup.log 2>&1
+[Sat Feb 14 06:00:01 UTC 2026] Starting weekly analysis...
+
+Weekly Analysis Summary:
+  Analyzed: 14
+  Failed:   0
+
+  XAUUSD: score=72.3, win_rate=58.1%
+  US500:  score=68.9, win_rate=55.3%
+  ...
+
+[Sat Feb 14 06:02:45 UTC 2026] Weekly analysis complete
 ```
 
-Save and exit.
-
-**What this means:** `0 3 * * *` = "At 3:00 AM, every day." The backup will run automatically and log its output.
+If any symbols show `ERROR`, check the backend logs for details: `journalctl -u longentry -n 100`.
 
 ---
 
@@ -817,13 +879,15 @@ Here's what you now have running:
 | Backend API | Running as a service on port 8001 | `curl http://localhost/api/health` |
 | Frontend | Built and served by Nginx | Visit `http://YOUR_VPS_IP` in your browser |
 | Nginx | Running, proxying API requests | `systemctl status nginx` |
-| Backups | Daily at 3 AM | `ls /var/backups/longentry/` |
+| Backups | Daily at 3:00 AM UTC | `ls /var/backups/longentry/` |
+| Weekly Analysis | Saturday at 6:00 AM UTC | `cat /var/log/longentry/analysis.log` |
 | DataSender | Attached to 14 charts in MT5 | Check the Experts tab in MT5 |
 
-**What happens next:**
-- On Friday, the DataSender will upload ~2 years of H1 candle data to your server (first run takes a few minutes)
-- Your dashboard will then show actual price data for all 14 markets
-- In later phases, we'll add the analytics engine, backtest engine, and the trading EA
+**The weekly cycle runs automatically:**
+1. **Friday** — DataSender uploads the latest H1 candles from MT5
+2. **Saturday 06:00 UTC** — Cron runs analysis: technical scores, backtests, ranking, activation
+3. **Sunday** — You review the dashboard and optionally override any picks
+4. **Monday** — EAs call `GET /api/config/{symbol}` and trade with the optimized parameters
 
 ---
 
