@@ -175,11 +175,27 @@ export default function MarketDetail({ markets }) {
             {market.category}
           </span>
         )}
-        {a?.technical_score != null && (
+        {a?.is_active && (
+          <span className="text-xs uppercase font-bold px-2 py-1 rounded bg-green-900/60 text-green-400">
+            Active
+          </span>
+        )}
+        {a?.final_score != null ? (
+          <span
+            className={`text-lg font-bold px-3 py-1 rounded ${scoreBg(a.final_score)} ${scoreColor(a.final_score)}`}
+          >
+            Score: {a.final_score.toFixed(1)}
+          </span>
+        ) : a?.technical_score != null ? (
           <span
             className={`text-lg font-bold px-3 py-1 rounded ${scoreBg(a.technical_score)} ${scoreColor(a.technical_score)}`}
           >
             Score: {a.technical_score.toFixed(1)}
+          </span>
+        ) : null}
+        {a?.rank != null && (
+          <span className="text-sm text-gray-400">
+            Rank #{a.rank}
           </span>
         )}
       </div>
@@ -314,6 +330,111 @@ export default function MarketDetail({ markets }) {
                 </span>
               </MetricRow>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Backtest Results */}
+      {a?.bt_total_return != null && (
+        <div className="mb-8">
+          <div className="bg-gray-900 rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+              Backtest Results (2-Year)
+            </h4>
+
+            {/* Summary sentence */}
+            <p className="text-sm text-gray-300 mb-4 leading-relaxed">
+              If you entered every day at{" "}
+              <span className="font-mono text-white">
+                {String(a.opt_entry_hour ?? 0).padStart(2, "0")}:00
+              </span>{" "}
+              with SL{" "}
+              <span className="font-mono text-white">{fmt(a.opt_sl_percent, 1)}%</span>{" "}
+              and TP{" "}
+              <span className="font-mono text-white">{fmt(a.opt_tp_percent, 1)}%</span>
+              , you would have made{" "}
+              <span className={`font-mono font-bold ${a.bt_total_return >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {a.bt_total_return >= 0 ? "+" : ""}{fmt(a.bt_total_return, 1)}%
+              </span>{" "}
+              profit over 2 years with a{" "}
+              <span className="font-mono text-white">{fmt(a.bt_win_rate, 1)}%</span>{" "}
+              win rate and{" "}
+              <span className="font-mono text-white">{fmt(a.bt_profit_factor)}</span>{" "}
+              profit factor.
+            </p>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Total Return</p>
+                <p className={`text-lg font-mono font-bold ${a.bt_total_return >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {a.bt_total_return >= 0 ? "+" : ""}{fmt(a.bt_total_return, 1)}%
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Win Rate</p>
+                <p className="text-lg font-mono text-blue-400">{fmt(a.bt_win_rate, 1)}%</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Profit Factor</p>
+                <p className="text-lg font-mono text-gray-200">{fmt(a.bt_profit_factor)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Max Drawdown</p>
+                <p className="text-lg font-mono text-red-400">-{fmt(a.bt_max_drawdown, 1)}%</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-800">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Entry Hour</p>
+                <p className="text-sm font-mono text-gray-200">
+                  {String(a.opt_entry_hour ?? 0).padStart(2, "0")}:00
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Stop Loss</p>
+                <p className="text-sm font-mono text-gray-200">{fmt(a.opt_sl_percent, 2)}%</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Take Profit</p>
+                <p className="text-sm font-mono text-gray-200">{fmt(a.opt_tp_percent, 2)}%</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Total Trades</p>
+                <p className="text-sm font-mono text-gray-200">{a.bt_total_trades}</p>
+              </div>
+            </div>
+
+            {/* Scores row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-800">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Technical Score</p>
+                <p className={`text-sm font-mono ${scoreColor(a.technical_score ?? 0)}`}>
+                  {fmt(a.technical_score, 1)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Backtest Score</p>
+                <p className={`text-sm font-mono ${scoreColor(a.backtest_score ?? 0)}`}>
+                  {fmt(a.backtest_score, 1)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Final Score</p>
+                <p className={`text-sm font-mono font-bold ${scoreColor(a.final_score ?? 0)}`}>
+                  {fmt(a.final_score, 1)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Param Stability</p>
+                <p className={`text-sm font-mono ${(a.bt_param_stability ?? 0) < 50 ? "text-yellow-400" : "text-green-400"}`}>
+                  {fmt(a.bt_param_stability, 0)}%
+                  {(a.bt_param_stability ?? 100) < 50 && (
+                    <span className="ml-1 text-xs text-yellow-500">Unreliable</span>
+                  )}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}

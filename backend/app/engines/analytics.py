@@ -19,7 +19,9 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
+from app.config import settings
 from app.database import get_pool
+from app.engines.backtest import run_backtest_for_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -286,8 +288,15 @@ async def store_analysis(metrics: dict) -> None:
             INSERT INTO weekly_analysis
                 (symbol, week_start, technical_score,
                  avg_daily_growth, avg_daily_loss,
-                 most_bullish_day, most_bearish_day, up_day_win_rate)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 most_bullish_day, most_bearish_day, up_day_win_rate,
+                 backtest_score, opt_entry_hour, opt_entry_minute,
+                 opt_sl_percent, opt_tp_percent,
+                 bt_total_return, bt_win_rate, bt_profit_factor,
+                 bt_total_trades, bt_max_drawdown, bt_param_stability,
+                 final_score, rank, is_active)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+                    $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+                    $20, $21, $22)
             ON CONFLICT (symbol, week_start)
             DO UPDATE SET
                 technical_score = EXCLUDED.technical_score,
@@ -295,7 +304,24 @@ async def store_analysis(metrics: dict) -> None:
                 avg_daily_loss = EXCLUDED.avg_daily_loss,
                 most_bullish_day = EXCLUDED.most_bullish_day,
                 most_bearish_day = EXCLUDED.most_bearish_day,
-                up_day_win_rate = EXCLUDED.up_day_win_rate
+                up_day_win_rate = EXCLUDED.up_day_win_rate,
+                backtest_score = EXCLUDED.backtest_score,
+                opt_entry_hour = EXCLUDED.opt_entry_hour,
+                opt_entry_minute = EXCLUDED.opt_entry_minute,
+                opt_sl_percent = EXCLUDED.opt_sl_percent,
+                opt_tp_percent = EXCLUDED.opt_tp_percent,
+                bt_total_return = EXCLUDED.bt_total_return,
+                bt_win_rate = EXCLUDED.bt_win_rate,
+                bt_profit_factor = EXCLUDED.bt_profit_factor,
+                bt_total_trades = EXCLUDED.bt_total_trades,
+                bt_max_drawdown = EXCLUDED.bt_max_drawdown,
+                bt_param_stability = EXCLUDED.bt_param_stability,
+                final_score = EXCLUDED.final_score,
+                rank = EXCLUDED.rank,
+                is_active = CASE
+                    WHEN weekly_analysis.is_manually_overridden THEN weekly_analysis.is_active
+                    ELSE EXCLUDED.is_active
+                END
             """,
             metrics["symbol"],
             metrics["week_start"],
@@ -305,6 +331,20 @@ async def store_analysis(metrics: dict) -> None:
             metrics["most_bullish_day"],
             metrics["most_bearish_day"],
             metrics["up_day_win_rate"],
+            metrics.get("backtest_score"),
+            metrics.get("opt_entry_hour"),
+            metrics.get("opt_entry_minute", 0),
+            metrics.get("opt_sl_percent"),
+            metrics.get("opt_tp_percent"),
+            metrics.get("bt_total_return"),
+            metrics.get("bt_win_rate"),
+            metrics.get("bt_profit_factor"),
+            metrics.get("bt_total_trades"),
+            metrics.get("bt_max_drawdown"),
+            metrics.get("bt_param_stability"),
+            metrics.get("final_score"),
+            metrics.get("rank"),
+            metrics.get("is_active", False),
         )
 
 
@@ -317,7 +357,7 @@ def get_current_week_start() -> date:
 
 async def run_full_analysis() -> list[dict]:
     """
-    Run analytics for all 14 markets.
+    Run analytics + backtest for all 14 markets.
     Called by the Saturday cron job.
     Returns list of results.
     """
@@ -330,25 +370,66 @@ async def run_full_analysis() -> list[dict]:
             "SELECT symbol FROM markets WHERE is_in_universe = true ORDER BY symbol"
         )
 
+    # Phase 1: Technical analysis + backtest for each symbol
     results = []
     for row in symbols:
         symbol = row["symbol"]
         try:
             metrics = await analyze_symbol(symbol, week_start)
-            if metrics is not None:
-                await store_analysis(metrics)
-                results.append(metrics)
-                logger.info(
-                    "Analyzed %s: score=%.1f, win_rate=%.1f%%",
-                    symbol,
-                    metrics["technical_score"],
-                    metrics["up_day_win_rate"],
+            if metrics is None:
+                results.append({"symbol": symbol, "error": "No data"})
+                continue
+
+            # Run backtest and merge results
+            h1 = await fetch_candles(symbol)
+            bt = await run_backtest_for_symbol(symbol, h1, week_start)
+            if bt is not None:
+                metrics.update(bt)
+                # FinalScore = Technical×0.50 + Backtest×0.35 (Fundamental=0 for now)
+                metrics["final_score"] = round(
+                    metrics["technical_score"] * 0.50 + bt["backtest_score"] * 0.35,
+                    1,
                 )
             else:
-                results.append({"symbol": symbol, "error": "No data"})
+                # No backtest — use technical score only
+                metrics["final_score"] = round(metrics["technical_score"] * 0.50, 1)
+
+            results.append(metrics)
+            logger.info(
+                "Analyzed %s: tech=%.1f, bt=%.1f, final=%.1f",
+                symbol,
+                metrics["technical_score"],
+                metrics.get("backtest_score", 0),
+                metrics["final_score"],
+            )
         except Exception:
             logger.exception("Failed to analyze %s", symbol)
             results.append({"symbol": symbol, "error": "Analysis failed"})
 
-    logger.info("Weekly analysis complete: %d/%d symbols processed", len(results), len(symbols))
+    # Phase 2: Rank by final_score and activate top N
+    scored = [r for r in results if "error" not in r and "final_score" in r]
+    scored.sort(key=lambda r: r["final_score"], reverse=True)
+
+    max_active = settings.max_active_markets
+    min_score = settings.min_final_score
+
+    for rank_idx, m in enumerate(scored):
+        m["rank"] = rank_idx + 1
+        m["is_active"] = (rank_idx < max_active) and (m["final_score"] >= min_score)
+
+    # Phase 3: Store all results
+    for m in scored:
+        try:
+            await store_analysis(m)
+        except Exception:
+            logger.exception("Failed to store analysis for %s", m["symbol"])
+
+    analyzed = len(scored)
+    failed = len(results) - analyzed
+    logger.info(
+        "Weekly analysis complete: %d/%d symbols, %d active",
+        analyzed,
+        len(symbols),
+        sum(1 for m in scored if m.get("is_active")),
+    )
     return results

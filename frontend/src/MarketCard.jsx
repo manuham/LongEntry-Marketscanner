@@ -25,6 +25,7 @@ function fmt(val, decimals = 2) {
 export default function MarketCard({ market, analytics }) {
   const borderColor = CATEGORY_COLORS[market.category] || "border-gray-600";
   const a = analytics;
+  const displayScore = a?.final_score ?? a?.technical_score;
 
   return (
     <Link
@@ -33,16 +34,20 @@ export default function MarketCard({ market, analytics }) {
     >
       {/* Header */}
       <div className="flex justify-between items-start">
-        <div>
+        <div className="flex items-center gap-2">
           <h3 className="text-lg font-semibold">{market.symbol}</h3>
-          <p className="text-sm text-gray-400">{market.name}</p>
+          {a?.is_active && (
+            <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-green-900/60 text-green-400">
+              Active
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {a?.technical_score != null && (
+          {displayScore != null && (
             <span
-              className={`text-sm font-bold px-2 py-0.5 rounded ${scoreBg(a.technical_score)} ${scoreColor(a.technical_score)}`}
+              className={`text-sm font-bold px-2 py-0.5 rounded ${scoreBg(displayScore)} ${scoreColor(displayScore)}`}
             >
-              {a.technical_score.toFixed(0)}
+              {displayScore.toFixed(0)}
             </span>
           )}
           <span className="text-xs uppercase px-2 py-0.5 rounded bg-gray-800 text-gray-400">
@@ -50,6 +55,7 @@ export default function MarketCard({ market, analytics }) {
           </span>
         </div>
       </div>
+      <p className="text-sm text-gray-400">{market.name}</p>
 
       {/* Price */}
       <div className="mt-3">
@@ -111,6 +117,21 @@ export default function MarketCard({ market, analytics }) {
               <p className="text-red-400 font-mono">{fmt(a.most_bearish_day)}%</p>
             </div>
           </div>
+
+          {/* Backtest summary */}
+          {a.bt_total_return != null && (
+            <div className="pt-2 border-t border-gray-800 text-xs text-gray-400">
+              <span className="font-mono">
+                Entry {String(a.opt_entry_hour ?? 0).padStart(2, "0")}:00
+                {" \u00B7 "}SL {fmt(a.opt_sl_percent, 1)}%
+                {" \u00B7 "}TP {fmt(a.opt_tp_percent, 1)}%
+                {" \u2192 "}
+              </span>
+              <span className={a.bt_total_return >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
+                {a.bt_total_return >= 0 ? "+" : ""}{fmt(a.bt_total_return, 1)}%
+              </span>
+            </div>
+          )}
         </div>
       )}
     </Link>
