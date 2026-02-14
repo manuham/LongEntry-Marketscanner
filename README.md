@@ -67,9 +67,10 @@ input string   TradeComment = "LongEntry"; // Trade Comment
 
 ### How server config works:
 - EA calls `GET {ServerURL}/config/{symbol}` once per day before entry time
+- Request includes `X-API-Key` header for authentication (same key used by DataSender)
 - If `active = false`, EA does nothing all day
 - If `active = true`, EA uses the received parameters to trade
-- If server is unreachable, EA does nothing (fail-safe)
+- If server is unreachable or returns auth error, EA does nothing (fail-safe)
 
 ### Multi-Account Setup:
 - All FTMO accounts run the same EA on the same 14 symbols
@@ -83,12 +84,14 @@ input string   TradeComment = "LongEntry"; // Trade Comment
 A separate MQL5 script/EA that runs on all 14 charts:
 
 ### What it does:
-- Runs on Friday, 1 hour before market close
+- Runs on each of the 14 charts independently
+- **Trigger:** Friday, 1 hour before that symbol's market close (each chart uses its own session schedule in MT5; e.g., European indices close ~17:30 CET, US indices ~22:00 CET, Asian indices closed earlier in the day)
 - Collects H1 (hourly) OHLCV candle data
 - First run: sends ~2 years of H1 candles (one-time bulk load)
 - Subsequent runs: sends only new candles since last upload
 - POSTs JSON to `{ServerURL}/candles`
 - Confirms successful upload via server response
+- If upload fails, retries up to 3 times with 30-second intervals. Logs failure to MT5 journal if all retries fail.
 
 ### Why H1 candles:
 - Allows precise entry time optimization (testing every hour)
@@ -210,11 +213,24 @@ Simulates the simple FixedLongEntry logic across all parameter combinations usin
 **Dashboard display per symbol:**
 "If you entered every day at 15:00 with SL 0.5% and TP 2.0%, you would have made +34% profit over 2 years with a 42% win rate and 1.8 profit factor."
 
+**Spread/slippage modeling:**
+- Each symbol has a configured typical spread (e.g., XAUUSD = 0.30 points, US500 = 0.50 points)
+- Backtest entry price = candle open + half-spread (simulates buying at ask)
+- This prevents the backtest from overstating returns vs. live trading
+
+**Overfitting safeguard — parameter stability tracking:**
+- The 2-year full-period backtest tests 490–1,176 parameter combinations per symbol. The best combo will always look good in-sample.
+- To detect overfitting: track the "best" parameters week-over-week. If a symbol's optimal entry hour, SL%, or TP% changes significantly each week, the result is likely fitting noise rather than a real edge.
+- Each symbol gets a `ParameterStability` metric (0–100): 100 = same best params for 8+ consecutive weeks, 0 = different best params every week.
+- Dashboard flags symbols with low parameter stability (< 50) as "unreliable backtest."
+- Symbols with unstable parameters get a penalty applied to their `BacktestScore`.
+
 **Output per symbol:**
 - Best `EntryHour` and `EntryMinute` (on the hour for now)
 - Best `StopLossPercent` and `TakeProfitPercent`
 - Win rate, profit factor, total return, max drawdown
-- These parameters are slow-moving — they probably stay the same for weeks/months
+- `ParameterStability` score (0–100)
+- These parameters are slow-moving — they probably stay the same for weeks/months. The stability metric validates this assumption.
 
 ### Engine 3 — Fundamental Scorer
 
@@ -246,9 +262,27 @@ FinalScore = (TechnicalScore × 0.50) + (BacktestScore × 0.35) + (FundamentalSc
 
 - Weights are adjustable in the dashboard settings
 - Top 5–6 markets by FinalScore get `active = true`
+- **Minimum score threshold:** Markets must score above a configurable minimum `FinalScore` (default: 40) to be activated, even if they rank in the top 5–6. If all markets score below the threshold, zero markets are activated that week. This prevents the system from going long when all markets look bearish.
 - Manual override: you can force any market active or inactive from the dashboard
 
-`BacktestScore` is derived from: total 2-year return, profit factor, win rate, and max drawdown of the best parameter combination.
+### BacktestScore Formula
+
+`BacktestScore` is derived from the best parameter combination's results, normalized to 0–100:
+
+```
+RawBacktestScore = (NormalizedReturn × 0.35)
+                 + (NormalizedProfitFactor × 0.30)
+                 + (NormalizedWinRate × 0.15)
+                 + (NormalizedDrawdown × 0.20)
+```
+
+**Normalization (each component scaled 0–100):**
+- `NormalizedReturn`: 2-year total return %, capped at 100%. Score = min(return, 100).
+- `NormalizedProfitFactor`: PF capped at 3.0. Score = min(PF / 3.0, 1.0) × 100.
+- `NormalizedWinRate`: Win rate as-is (already 0–100 range).
+- `NormalizedDrawdown`: Inverted — lower drawdown = higher score. Score = max(0, 100 - (maxDD% × 5)). A 20% drawdown scores 0.
+
+**Parameter stability penalty:** If `ParameterStability` < 50, apply: `BacktestScore = RawBacktestScore × (ParameterStability / 100)`. This downgrades symbols where the backtest is likely overfitting.
 
 ---
 
@@ -304,10 +338,14 @@ FinalScore = (TechnicalScore × 0.50) + (BacktestScore × 0.35) + (FundamentalSc
 2. FastAPI backend with endpoints:
    - `POST /api/candles` — receive H1 candle data from DataSender
    - `GET /api/markets` — list all 14 markets with latest price
-3. `DataSender.mq5` — sends H1 candles via WebRequest
-4. PostgreSQL database with `markets` and `candles` tables
-5. Basic React dashboard showing all 14 markets with current prices
-6. End-to-end test: MT5 → server → database → dashboard
+   - `GET /api/health` — unauthenticated health check for monitoring
+3. API key authentication on all endpoints (except health check)
+4. `DataSender.mq5` — sends H1 candles via WebRequest
+5. PostgreSQL database with `markets` and `candles` tables
+6. **Database backups:** daily `pg_dump` cron job, retain last 7 daily backups, stored in a separate directory on the VPS
+7. **Basic logging:** structured logging (JSON) for all API requests, DataSender uploads, and errors. Logs rotated daily.
+8. Basic React dashboard showing all 14 markets with current prices
+9. End-to-end test: MT5 → server → database → dashboard
 
 ### Phase 2 — Analytics Engine & Dashboard
 **Goal:** Rich market statistics displayed beautifully on the dashboard.
@@ -427,6 +465,7 @@ CREATE TABLE weekly_analysis (
     bt_profit_factor DOUBLE PRECISION,
     bt_total_trades INTEGER,
     bt_max_drawdown DOUBLE PRECISION,
+    bt_param_stability DOUBLE PRECISION,  -- 0-100, how stable best params are week-over-week
     -- Analytics metrics
     avg_daily_growth DOUBLE PRECISION,
     avg_daily_loss DOUBLE PRECISION,
@@ -455,6 +494,8 @@ CREATE TABLE weekly_results (
 ---
 
 ## API Endpoints
+
+**Authentication:** All endpoints require an `X-API-Key` header. The server validates the key against a hashed value stored in environment config. Requests without a valid key receive `401 Unauthorized`. The only unauthenticated endpoint is `GET /api/health` (used for uptime monitoring).
 
 ### `GET /api/config/{symbol}`
 Called by EA daily. Returns trading configuration.
@@ -505,6 +546,29 @@ Manual override from dashboard: force active or inactive.
 
 ---
 
+## Monitoring & Alerting
+
+### What to monitor:
+| Event | Expected | Alert if |
+|-------|----------|----------|
+| DataSender upload (per symbol) | Every Friday | Any symbol missing by Saturday 00:00 UTC |
+| Saturday analysis cron job | Completes Saturday | Job fails or runs > 30 min |
+| EA config fetch (per symbol) | Daily, Monday–Friday | No fetch for an active symbol by entry hour |
+| Database size / disk usage | Steady growth | Disk usage > 80% |
+| API health check | Responds 200 | Down for > 5 min |
+
+### Alerting channel:
+- **V1:** Telegram bot sends alerts to a private channel. Simple HTTP POST to Telegram Bot API — no external dependencies.
+- Dashboard also shows a "System Health" indicator on the home page (green/yellow/red).
+
+### Logging:
+- All API requests logged with: timestamp, endpoint, symbol, response code, duration
+- DataSender uploads logged with: symbol, candle count, success/failure
+- Saturday cron job: start/end timestamps, per-symbol processing status
+- Logs stored in `/var/log/longentry/` with daily rotation, 30-day retention
+
+---
+
 ## Resolved Decisions
 
 | Question | Decision | Rationale |
@@ -517,8 +581,14 @@ Manual override from dashboard: force active or inactive.
 | Domain name? | **No.** VPS IP address for now. | Can add domain later if needed |
 | Hosting? | **Hetzner VPS (~€5/mo)** | European, great specs for price, close to you |
 | n8n / workflow tools? | **No.** Custom Python for everything. | Too computation-heavy for workflow tools |
+| Overfitting mitigation? | **Parameter stability tracking.** Flag unstable params, penalize BacktestScore. | Walk-forward adds complexity; stability tracking catches the same problem more simply |
+| All markets bearish? | **Minimum FinalScore threshold (default 40).** Zero markets activated if all below threshold. | Prevents going long in a broad downturn |
+| Spread in backtest? | **Yes.** Per-symbol typical spread added to entry price. | Small cost but makes backtest returns realistic |
+| API authentication? | **X-API-Key header on all endpoints.** Key hashed in server config. | Prevents unauthorized reading of trading config or injecting candle data |
+| Database backups? | **Daily pg_dump, 7-day retention.** | Losing candle data means re-bootstrapping 2 years from MT5 |
+| Alerting? | **Telegram bot for V1.** Dashboard health indicator. | Low-effort, no external dependencies beyond Telegram API |
 
 ---
 
-*Document Version: 2.0 — Updated Feb 14, 2026*
-*Status: All questions resolved. Ready for Phase 1 development with Claude Code.*
+*Document Version: 2.1 — Updated Feb 14, 2026*
+*Status: All questions resolved. Blueprint reviewed and hardened (overfitting safeguards, authentication, backups, monitoring). Ready for Phase 1 development with Claude Code.*
