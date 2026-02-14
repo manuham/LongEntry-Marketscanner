@@ -217,24 +217,58 @@ Run the migration file — this creates all the tables the app needs:
 psql -U longentry -d longentry -f /opt/longentry/backend/migrations/001_initial.sql
 ```
 
-If you see `ERROR: connection refused` or a password prompt, you may need to edit PostgreSQL's authentication. Run:
+If you see an error like `Peer authentication failed for user "longentry"`, you need to edit PostgreSQL's authentication config. This tells PostgreSQL to accept password logins.
+
+Open the config file in the **nano** text editor:
 
 ```bash
 nano /etc/postgresql/*/main/pg_hba.conf
 ```
 
-Find the line that says:
+You'll see a file full of comments (lines starting with `#`). The lines you need are near the **bottom** of the file.
+
+**How to get to the bottom:** Press `Ctrl+End` (hold Ctrl, then press the End key). This jumps to the very last line.
+
+You should see lines that look like this:
+
 ```
-local   all   all   peer
+local   all             postgres                                peer
+local   all             all                                     peer
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
 ```
 
-Change `peer` to `md5`. Then save (press `Ctrl+O`, then `Enter`, then `Ctrl+X` to exit) and restart PostgreSQL:
+**Find the line that says `local   all   all   peer`** (the second `local` line). Use the arrow keys to move your cursor onto the word `peer` on that line.
+
+**Change `peer` to `md5`:**
+1. Press the `Delete` key 4 times to delete the word `peer`
+2. Type `md5`
+
+The line should now read:
+```
+local   all             all                                     md5
+```
+
+> **Important:** Only change the line that says `local all all` — do NOT change the first line that says `local all postgres`.
+
+**Save and exit nano:**
+1. Press `Ctrl+O` (the letter O, not zero) — this means "save"
+2. Press `Enter` to confirm the filename
+3. Press `Ctrl+X` to exit nano
+
+**Restart PostgreSQL** so it picks up the change:
 
 ```bash
 systemctl restart postgresql
 ```
 
-Now try the migration command again. When asked for a password, enter the one you chose in Step 2.1.
+Now try the migration command again:
+
+```bash
+psql -U longentry -d longentry -f /opt/longentry/backend/migrations/001_initial.sql
+```
+
+When asked for a password, type the one you chose in Step 2.1 and press Enter. (You won't see the characters as you type — that's normal.)
 
 ### Step 2.4 — Load the 14 market symbols
 
