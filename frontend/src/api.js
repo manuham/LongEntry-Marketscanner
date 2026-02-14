@@ -22,6 +22,10 @@ export function fetchSymbolAnalytics(symbol) {
   return apiFetch(`/api/analytics/${symbol}`);
 }
 
+export function fetchCandles(symbol, limit = 500) {
+  return apiFetch(`/api/candles/${symbol}?limit=${limit}`);
+}
+
 export function setApiKey(key) {
   localStorage.setItem("le_api_key", key);
   window.location.reload();
