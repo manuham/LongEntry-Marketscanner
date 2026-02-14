@@ -414,8 +414,9 @@ async def run_full_analysis() -> list[dict]:
     min_score = settings.min_final_score
 
     for rank_idx, m in enumerate(scored):
-        m["rank"] = rank_idx + 1
-        m["is_active"] = (rank_idx < max_active) and (m["final_score"] >= min_score)
+        m["rank"] = int(rank_idx + 1)
+        m["final_score"] = float(m["final_score"])
+        m["is_active"] = bool((rank_idx < max_active) and (m["final_score"] >= min_score))
 
     # Phase 3: Store all results
     for m in scored:
