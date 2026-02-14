@@ -1,6 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from app.auth import require_api_key
 from app.database import get_pool
 from app.schemas.market import MarketInfo
 
@@ -8,7 +7,7 @@ router = APIRouter(tags=["markets"])
 
 
 @router.get("/markets", response_model=list[MarketInfo])
-async def list_markets(_: str = Depends(require_api_key)):
+async def list_markets():
     """Return all 14 markets with latest candle price."""
     pool = await get_pool()
     async with pool.acquire() as conn:

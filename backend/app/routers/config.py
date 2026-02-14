@@ -1,8 +1,7 @@
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
-from app.auth import require_api_key
 from app.database import get_pool
 from app.schemas.market import MarketConfigResponse
 
@@ -16,7 +15,7 @@ def _current_week_start() -> date:
 
 
 @router.get("/config/{symbol}", response_model=MarketConfigResponse)
-async def get_config(symbol: str, _: str = Depends(require_api_key)):
+async def get_config(symbol: str):
     """Return trading configuration for a symbol. Called by EA daily."""
     week_start = _current_week_start()
     pool = await get_pool()
