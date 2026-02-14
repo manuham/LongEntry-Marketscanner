@@ -100,7 +100,7 @@ bool UploadCandles()
    Print("[DataSender] Preparing ", copied, " candles for upload");
 
    // Build JSON payload in chunks (WebRequest has size limits)
-   int chunkSize = 5000;
+   int chunkSize = 2000;
    int totalChunks = (int)MathCeil((double)copied / chunkSize);
 
    for(int chunk = 0; chunk < totalChunks; chunk++)
@@ -176,9 +176,10 @@ bool SendChunk(string json, int chunkNum, int totalChunks)
          return true;
         }
 
+      string errBody = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
       Print("[DataSender] Chunk ", chunkNum, "/", totalChunks,
             " attempt ", attempt, "/", MaxRetries,
-            " failed with code ", res);
+            " failed (code ", res, "): ", errBody);
 
       if(attempt < MaxRetries)
         {

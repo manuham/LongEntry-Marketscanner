@@ -51,7 +51,7 @@ void OnStart()
    Print("[ManualUpload] Got ", copied, " candles. Uploading in chunks...");
 
    // Upload in chunks of 5000
-   int chunkSize = 5000;
+   int chunkSize = 2000;
    int totalChunks = (int)MathCeil((double)copied / chunkSize);
 
    for(int chunk = 0; chunk < totalChunks; chunk++)
@@ -135,9 +135,10 @@ bool SendChunk(string json, int chunkNum, int totalChunks)
          return true;
         }
 
+      string errBody = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
       Print("[ManualUpload] Chunk ", chunkNum, "/", totalChunks,
             " attempt ", attempt, "/", MaxRetries,
-            " failed (code ", res, ")");
+            " failed (code ", res, "): ", errBody);
 
       if(attempt < MaxRetries)
         {
