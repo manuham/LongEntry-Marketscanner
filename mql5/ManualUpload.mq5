@@ -93,7 +93,9 @@ string BuildJSON(MqlRates &rates[], int startIdx, int endIdx)
          json += ",";
 
       json += "{";
-      json += "\"time\":\"" + TimeToString(rates[i].time, TIME_DATE | TIME_SECONDS) + "\",";
+      string timeStr = TimeToString(rates[i].time, TIME_DATE | TIME_SECONDS);
+      StringReplace(timeStr, ".", "-");
+      json += "\"time\":\"" + timeStr + "\",";
       json += "\"open\":" + DoubleToString(rates[i].open, (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS)) + ",";
       json += "\"high\":" + DoubleToString(rates[i].high, (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS)) + ",";
       json += "\"low\":" + DoubleToString(rates[i].low, (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS)) + ",";
