@@ -26,6 +26,20 @@ export function fetchCandles(symbol, limit = 500) {
   return apiFetch(`/api/candles/${symbol}?limit=${limit}`);
 }
 
+export function overrideMarket(symbol, active) {
+  return fetch(`/api/override/${symbol}`, {
+    method: "POST",
+    headers: {
+      "X-API-Key": API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ active }),
+  }).then((r) => {
+    if (!r.ok) throw new Error(`API error ${r.status}: ${r.statusText}`);
+    return r.json();
+  });
+}
+
 export function setApiKey(key) {
   localStorage.setItem("le_api_key", key);
   window.location.reload();

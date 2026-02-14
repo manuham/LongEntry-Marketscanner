@@ -21,7 +21,7 @@ _ANALYSIS_COLS = """
     symbol, week_start, technical_score,
     avg_daily_growth, avg_daily_loss,
     most_bullish_day, most_bearish_day, up_day_win_rate,
-    backtest_score, final_score, rank, is_active,
+    backtest_score, final_score, rank, is_active, is_manually_overridden,
     opt_entry_hour, opt_sl_percent, opt_tp_percent,
     bt_total_return, bt_win_rate, bt_profit_factor,
     bt_total_trades, bt_max_drawdown, bt_param_stability
@@ -42,6 +42,7 @@ def _row_to_summary(r) -> AnalysisSummary:
         final_score=r["final_score"],
         rank=r["rank"],
         is_active=r["is_active"] or False,
+        is_manually_overridden=r["is_manually_overridden"] or False,
         opt_entry_hour=r["opt_entry_hour"],
         opt_sl_percent=r["opt_sl_percent"],
         opt_tp_percent=r["opt_tp_percent"],
@@ -110,6 +111,7 @@ async def get_symbol_analytics(symbol: str):
         row = await conn.fetchrow(
             """
             SELECT backtest_score, final_score, rank, is_active,
+                   is_manually_overridden,
                    opt_entry_hour, opt_sl_percent, opt_tp_percent,
                    bt_total_return, bt_win_rate, bt_profit_factor,
                    bt_total_trades, bt_max_drawdown, bt_param_stability

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { createChart } from "lightweight-charts";
-import { fetchSymbolAnalytics, fetchCandles } from "./api";
+import { fetchSymbolAnalytics, fetchCandles, overrideMarket } from "./api";
 
 function fmt(val, decimals = 2) {
   if (val == null) return "\u2014";
@@ -136,8 +136,18 @@ export default function MarketDetail({ markets }) {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [overriding, setOverriding] = useState(false);
 
   const market = markets.find((m) => m.symbol === symbol);
+
+  const refreshAnalytics = () => {
+    fetchSymbolAnalytics(symbol)
+      .then(setAnalytics)
+      .catch((e) => {
+        if (e.message.includes("404")) setAnalytics(null);
+        else setError(e.message);
+      });
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -153,6 +163,14 @@ export default function MarketDetail({ markets }) {
       })
       .finally(() => setLoading(false));
   }, [symbol]);
+
+  const handleOverride = (active) => {
+    setOverriding(true);
+    overrideMarket(symbol, active)
+      .then(() => refreshAnalytics())
+      .catch((e) => setError(e.message))
+      .finally(() => setOverriding(false));
+  };
 
   const a = analytics;
 
@@ -175,10 +193,50 @@ export default function MarketDetail({ markets }) {
             {market.category}
           </span>
         )}
-        {a?.is_active && (
-          <span className="text-xs uppercase font-bold px-2 py-1 rounded bg-green-900/60 text-green-400">
-            Active
-          </span>
+        {a && (
+          <div className="flex items-center gap-2">
+            {a.is_active ? (
+              <>
+                <span className="text-xs uppercase font-bold px-2 py-1 rounded bg-green-900/60 text-green-400">
+                  Active
+                </span>
+                <button
+                  onClick={() => handleOverride(false)}
+                  disabled={overriding}
+                  className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-red-900/60 text-gray-300 hover:text-red-400 transition disabled:opacity-50"
+                >
+                  {overriding ? "..." : "Deactivate"}
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-xs uppercase font-bold px-2 py-1 rounded bg-gray-800 text-gray-500">
+                  Inactive
+                </span>
+                <button
+                  onClick={() => handleOverride(true)}
+                  disabled={overriding}
+                  className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-green-900/60 text-gray-300 hover:text-green-400 transition disabled:opacity-50"
+                >
+                  {overriding ? "..." : "Activate"}
+                </button>
+              </>
+            )}
+            {a.is_manually_overridden && (
+              <span className="text-xs px-2 py-0.5 rounded bg-yellow-900/40 text-yellow-500">
+                Manual
+              </span>
+            )}
+            {a.is_manually_overridden && (
+              <button
+                onClick={() => handleOverride(null)}
+                disabled={overriding}
+                className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-gray-200 transition disabled:opacity-50"
+              >
+                Clear Override
+              </button>
+            )}
+          </div>
         )}
         {a?.final_score != null ? (
           <span
