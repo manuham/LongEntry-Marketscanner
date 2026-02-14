@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 const CATEGORY_COLORS = {
   commodity: "border-yellow-600",
   index: "border-blue-600",
@@ -25,8 +27,9 @@ export default function MarketCard({ market, analytics }) {
   const a = analytics;
 
   return (
-    <div
-      className={`bg-gray-900 rounded-lg p-4 border-l-4 ${borderColor} hover:bg-gray-800 transition`}
+    <Link
+      to={`/market/${market.symbol}`}
+      className={`block bg-gray-900 rounded-lg p-4 border-l-4 ${borderColor} hover:bg-gray-800 transition cursor-pointer`}
     >
       {/* Header */}
       <div className="flex justify-between items-start">
@@ -110,6 +113,6 @@ export default function MarketCard({ market, analytics }) {
           </div>
         </div>
       )}
-    </div>
+    </Link>
   );
 }

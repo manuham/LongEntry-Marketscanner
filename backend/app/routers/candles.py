@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.config import settings
 from app.database import get_pool
@@ -8,6 +8,42 @@ from app.schemas.candle import CandleUploadRequest, CandleUploadResponse
 
 router = APIRouter(tags=["candles"])
 logger = logging.getLogger(__name__)
+
+
+@router.get("/candles/{symbol}")
+async def get_candles(symbol: str, limit: int = Query(default=500, ge=1, le=2000)):
+    """Return recent H1 candles for charting."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval("SELECT 1 FROM markets WHERE symbol = $1", symbol)
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Unknown symbol: {symbol}")
+
+        rows = await conn.fetch(
+            """
+            SELECT open_time, open, high, low, close, volume
+            FROM candles
+            WHERE symbol = $1 AND timeframe = 'H1'
+            ORDER BY open_time DESC
+            LIMIT $2
+            """,
+            symbol,
+            limit,
+        )
+
+    # Return oldest-first for charting
+    candles = [
+        {
+            "time": int(r["open_time"].timestamp()),
+            "open": r["open"],
+            "high": r["high"],
+            "low": r["low"],
+            "close": r["close"],
+            "volume": r["volume"],
+        }
+        for r in reversed(rows)
+    ]
+    return candles
 
 
 @router.post("/candles", response_model=CandleUploadResponse)

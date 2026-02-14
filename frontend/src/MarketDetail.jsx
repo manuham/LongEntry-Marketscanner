@@ -1,0 +1,336 @@
+import { useEffect, useRef, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import { createChart } from "lightweight-charts";
+import { fetchSymbolAnalytics, fetchCandles } from "./api";
+
+function fmt(val, decimals = 2) {
+  if (val == null) return "\u2014";
+  return val.toFixed(decimals);
+}
+
+function pctColor(val) {
+  if (val == null) return "text-gray-400";
+  return val >= 0 ? "text-green-400" : "text-red-400";
+}
+
+function pctPrefix(val) {
+  if (val == null) return "\u2014";
+  return (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
+}
+
+function scoreColor(score) {
+  if (score >= 70) return "text-green-400";
+  if (score >= 50) return "text-yellow-400";
+  return "text-red-400";
+}
+
+function scoreBg(score) {
+  if (score >= 70) return "bg-green-900/40";
+  if (score >= 50) return "bg-yellow-900/40";
+  return "bg-red-900/40";
+}
+
+function smaStatus(current, sma) {
+  if (current == null || sma == null) return { label: "\u2014", color: "text-gray-500" };
+  const diff = ((current - sma) / sma) * 100;
+  const above = current > sma;
+  return {
+    label: `${above ? "Above" : "Below"} (${diff >= 0 ? "+" : ""}${diff.toFixed(2)}%)`,
+    color: above ? "text-green-400" : "text-red-400",
+  };
+}
+
+function rsiColor(rsi) {
+  if (rsi == null) return "text-gray-500";
+  if (rsi >= 70) return "text-red-400";
+  if (rsi <= 30) return "text-green-400";
+  return "text-blue-400";
+}
+
+function rsiLabel(rsi) {
+  if (rsi == null) return "";
+  if (rsi >= 70) return "Overbought";
+  if (rsi <= 30) return "Oversold";
+  return "Neutral";
+}
+
+function CandleChart({ symbol }) {
+  const containerRef = useRef(null);
+  const [noData, setNoData] = useState(false);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const chart = createChart(containerRef.current, {
+      layout: {
+        background: { color: "#111827" },
+        textColor: "#9CA3AF",
+      },
+      grid: {
+        vertLines: { color: "#1F2937" },
+        horzLines: { color: "#1F2937" },
+      },
+      width: containerRef.current.clientWidth,
+      height: 400,
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: "#22C55E",
+      downColor: "#EF4444",
+      borderDownColor: "#EF4444",
+      borderUpColor: "#22C55E",
+      wickDownColor: "#EF4444",
+      wickUpColor: "#22C55E",
+    });
+
+    fetchCandles(symbol, 1000)
+      .then((candles) => {
+        if (candles.length === 0) {
+          setNoData(true);
+          return;
+        }
+        candleSeries.setData(candles);
+        chart.timeScale().fitContent();
+      })
+      .catch(() => setNoData(true));
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        chart.applyOptions({ width: entry.contentRect.width });
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      chart.remove();
+    };
+  }, [symbol]);
+
+  if (noData) {
+    return (
+      <div className="bg-gray-900 rounded-lg p-8 text-center text-gray-500">
+        No candle data available yet. Data will appear after the first Friday upload.
+      </div>
+    );
+  }
+
+  return <div ref={containerRef} className="rounded-lg overflow-hidden" />;
+}
+
+function MetricRow({ label, children }) {
+  return (
+    <div className="flex justify-between items-center py-1.5 border-b border-gray-800 last:border-0">
+      <span className="text-gray-400 text-sm">{label}</span>
+      <span className="font-mono text-sm">{children}</span>
+    </div>
+  );
+}
+
+export default function MarketDetail({ markets }) {
+  const { symbol } = useParams();
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const market = markets.find((m) => m.symbol === symbol);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchSymbolAnalytics(symbol)
+      .then(setAnalytics)
+      .catch((e) => {
+        if (e.message.includes("404")) {
+          setAnalytics(null);
+        } else {
+          setError(e.message);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [symbol]);
+
+  const a = analytics;
+
+  return (
+    <div>
+      {/* Back link */}
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200 mb-4 transition"
+      >
+        &larr; Back to overview
+      </Link>
+
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-4 mb-6">
+        <h2 className="text-2xl font-bold">{symbol}</h2>
+        {market && <span className="text-gray-400">{market.name}</span>}
+        {market && (
+          <span className="text-xs uppercase px-2 py-0.5 rounded bg-gray-800 text-gray-400">
+            {market.category}
+          </span>
+        )}
+        {a?.technical_score != null && (
+          <span
+            className={`text-lg font-bold px-3 py-1 rounded ${scoreBg(a.technical_score)} ${scoreColor(a.technical_score)}`}
+          >
+            Score: {a.technical_score.toFixed(1)}
+          </span>
+        )}
+      </div>
+
+      {/* Price */}
+      {a?.current_price != null && (
+        <p className="text-3xl font-mono mb-6">
+          {a.current_price.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
+        </p>
+      )}
+
+      {/* Chart */}
+      <div className="mb-8">
+        <h3 className="text-lg font-semibold mb-3">H1 Chart</h3>
+        <CandleChart symbol={symbol} />
+      </div>
+
+      {loading && <p className="text-gray-400">Loading analytics...</p>}
+      {error && (
+        <p className="text-red-400 bg-red-950 px-4 py-3 rounded mb-4">{error}</p>
+      )}
+
+      {/* Metrics Grid */}
+      {a && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Column 1: Daily Statistics */}
+          <div className="bg-gray-900 rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">
+              Daily Statistics
+            </h4>
+            <MetricRow label="Avg daily growth">
+              <span className="text-green-400">+{fmt(a.avg_daily_growth, 3)}%</span>
+            </MetricRow>
+            <MetricRow label="Avg daily loss">
+              <span className="text-red-400">{fmt(a.avg_daily_loss, 3)}%</span>
+            </MetricRow>
+            <MetricRow label="Most bullish day">
+              <span className="text-green-400">+{fmt(a.most_bullish_day)}%</span>
+            </MetricRow>
+            <MetricRow label="Most bearish day">
+              <span className="text-red-400">{fmt(a.most_bearish_day)}%</span>
+            </MetricRow>
+            <MetricRow label="Up-day win rate">
+              <span className="text-blue-400">{fmt(a.up_day_win_rate, 1)}%</span>
+            </MetricRow>
+            {/* Win rate bar */}
+            <div className="mt-2">
+              <div className="w-full bg-gray-800 rounded-full h-2">
+                <div
+                  className="bg-blue-500 h-2 rounded-full transition-all"
+                  style={{ width: `${Math.min(a.up_day_win_rate || 0, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Column 2: Moving Averages & Trend */}
+          <div className="bg-gray-900 rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">
+              Trend & Momentum
+            </h4>
+            {[
+              { label: "vs SMA(20)", sma: a.sma_20 },
+              { label: "vs SMA(50)", sma: a.sma_50 },
+              { label: "vs SMA(200)", sma: a.sma_200 },
+            ].map(({ label, sma }) => {
+              const s = smaStatus(a.current_price, sma);
+              return (
+                <MetricRow key={label} label={label}>
+                  <span className={s.color}>{s.label}</span>
+                </MetricRow>
+              );
+            })}
+            <MetricRow label="RSI(14)">
+              <span className={rsiColor(a.rsi_14)}>
+                {fmt(a.rsi_14, 1)} {rsiLabel(a.rsi_14)}
+              </span>
+            </MetricRow>
+            <MetricRow label="Daily range">
+              <span className="text-gray-200">{fmt(a.daily_range_pct, 3)}%</span>
+            </MetricRow>
+            <MetricRow label="ATR(14)">
+              <span className="text-gray-200">{fmt(a.atr_14)}</span>
+            </MetricRow>
+          </div>
+
+          {/* Column 3: Price Changes */}
+          <div className="bg-gray-900 rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">
+              Price Changes
+            </h4>
+            {[
+              { label: "1 week", val: a.change_1w },
+              { label: "2 weeks", val: a.change_2w },
+              { label: "1 month", val: a.change_1m },
+              { label: "3 months", val: a.change_3m },
+            ].map(({ label, val }) => (
+              <MetricRow key={label} label={label}>
+                <span className={pctColor(val)}>{pctPrefix(val)}</span>
+              </MetricRow>
+            ))}
+            {a.sma_20 != null && (
+              <MetricRow label="SMA(20)">
+                <span className="text-gray-200 font-mono">
+                  {a.sma_20.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </MetricRow>
+            )}
+            {a.sma_50 != null && (
+              <MetricRow label="SMA(50)">
+                <span className="text-gray-200 font-mono">
+                  {a.sma_50.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </MetricRow>
+            )}
+            {a.sma_200 != null && (
+              <MetricRow label="SMA(200)">
+                <span className="text-gray-200 font-mono">
+                  {a.sma_200.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </MetricRow>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Data info footer */}
+      {a && (
+        <p className="text-xs text-gray-600 text-center">
+          Based on {a.daily_bar_count} daily bars from {a.candle_count.toLocaleString()} H1
+          candles &middot; Week of {a.week_start}
+        </p>
+      )}
+
+      {!loading && !error && !a && (
+        <div className="bg-gray-900 rounded-lg p-8 text-center text-gray-500">
+          No analytics data available yet. Run the analysis after candle data has been uploaded.
+        </div>
+      )}
+    </div>
+  );
+}
