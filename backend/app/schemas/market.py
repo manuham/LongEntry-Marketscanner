@@ -23,3 +23,12 @@ class MarketConfigResponse(BaseModel):
 
 class OverrideRequest(BaseModel):
     active: bool | None = None  # True/False = force, None = clear override
+
+
+class MaxActiveRequest(BaseModel):
+    max_active: int = Field(ge=1, le=14)
+
+
+class MaxActiveResponse(BaseModel):
+    max_active: int
+    active_count: int

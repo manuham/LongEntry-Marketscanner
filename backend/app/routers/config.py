@@ -3,8 +3,9 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import require_api_key
+from app.config import settings
 from app.database import get_pool
-from app.schemas.market import MarketConfigResponse, OverrideRequest
+from app.schemas.market import MarketConfigResponse, MaxActiveRequest, MaxActiveResponse, OverrideRequest
 
 router = APIRouter(tags=["config"])
 
@@ -140,3 +141,63 @@ async def override_market(
         tp_percent=row["opt_tp_percent"] or 0.0,
         week_start=str(week_start),
     )
+
+
+@router.get("/config/max-active-markets", response_model=MaxActiveResponse)
+async def get_max_active():
+    """Return the current max active markets setting."""
+    week_start = _current_week_start()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT COUNT(*) FROM weekly_analysis WHERE week_start = $1 AND is_active = true",
+            week_start,
+        )
+    return MaxActiveResponse(max_active=settings.max_active_markets, active_count=count or 0)
+
+
+@router.put("/config/max-active-markets", response_model=MaxActiveResponse)
+async def set_max_active(
+    body: MaxActiveRequest,
+    api_key: str = Depends(require_api_key),
+):
+    """Update max active markets and re-rank current week."""
+    settings.max_active_markets = body.max_active
+    week_start = _current_week_start()
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        # Fetch all scored markets for the current week, ordered by rank
+        rows = await conn.fetch(
+            """
+            SELECT symbol, final_score, rank, is_manually_overridden
+            FROM weekly_analysis
+            WHERE week_start = $1 AND final_score IS NOT NULL
+            ORDER BY final_score DESC NULLS LAST
+            """,
+            week_start,
+        )
+
+        # Re-activate: top N that meet min score, respecting manual overrides
+        min_score = settings.min_final_score
+        for rank_idx, row in enumerate(rows):
+            if row["is_manually_overridden"]:
+                continue
+            should_be_active = (rank_idx < body.max_active) and (row["final_score"] >= min_score)
+            await conn.execute(
+                """
+                UPDATE weekly_analysis
+                SET is_active = $1
+                WHERE symbol = $2 AND week_start = $3
+                """,
+                should_be_active,
+                row["symbol"],
+                week_start,
+            )
+
+        count = await conn.fetchval(
+            "SELECT COUNT(*) FROM weekly_analysis WHERE week_start = $1 AND is_active = true",
+            week_start,
+        )
+
+    return MaxActiveResponse(max_active=body.max_active, active_count=count or 0)
