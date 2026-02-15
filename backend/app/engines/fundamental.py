@@ -10,7 +10,7 @@ V1: Manual input via API. Later: auto-fetch from economic calendar APIs.
 """
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from app.database import get_pool
 
@@ -107,8 +107,12 @@ def compute_fundamental_score(
         score -= risk * 10        # risk_off +10 (safe haven demand)
         score -= growth * 5       # expanding economy -5 (less safe haven need)
 
-    # Event risk penalty: up to 3 high-impact events, -5 each
-    score -= min(high_impact_events, 3) * 5
+    # Event risk penalty: diminishing returns per additional event
+    # 1st event: -5, 2nd: -4, 3rd: -3, 4th: -2, 5th+: -1 each
+    event_penalty = 0.0
+    for i in range(high_impact_events):
+        event_penalty += max(1.0, 5.0 - i)
+    score -= event_penalty
 
     return max(0.0, min(100.0, round(score, 1)))
 
@@ -143,12 +147,29 @@ async def score_symbol(symbol: str, week_start: date) -> float:
     # Try AI prediction first
     ai = await fetch_ai_prediction(symbol)
     if ai is not None:
-        score = max(0.0, min(100.0, float(ai["score"])))
-        logger.info(
-            "Fundamental score for %s: %.1f (AI: %s — %s)",
-            symbol, score, ai["prediction"], (ai.get("reasoning") or "")[:60],
-        )
-        return score
+        raw_score = float(ai["score"])
+        # Validate: AI score must be in [0, 100]; reject nonsense values
+        if not (0.0 <= raw_score <= 100.0):
+            logger.warning(
+                "AI score for %s out of range (%.1f), falling back to region",
+                symbol, raw_score,
+            )
+        else:
+            # Time-decay: linearly decay toward neutral (50) as prediction ages
+            # Fresh (0 days) = full weight, 7 days old = no weight
+            updated_at = ai["updated_at"]
+            if updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=timezone.utc)
+            age_days = (datetime.now(timezone.utc) - updated_at).total_seconds() / 86400.0
+            decay = max(0.0, 1.0 - age_days / 7.0)
+            score = 50.0 + (raw_score - 50.0) * decay
+            score = max(0.0, min(100.0, round(score, 1)))
+            logger.info(
+                "Fundamental score for %s: %.1f (AI: %s, age=%.1fd, decay=%.2f — %s)",
+                symbol, score, ai["prediction"], age_days, decay,
+                (ai.get("reasoning") or "")[:60],
+            )
+            return score
 
     # Fallback to region-based scoring
     region = SYMBOL_REGION.get(symbol)

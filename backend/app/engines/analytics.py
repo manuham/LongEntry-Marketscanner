@@ -87,7 +87,7 @@ def calc_rsi(closes: pd.Series, period: int = 14) -> float | None:
 
 
 def calc_atr(daily: pd.DataFrame, period: int = 14) -> float | None:
-    """Average True Range over N days."""
+    """Average True Range over N days using Wilder's smoothing (EMA)."""
     if len(daily) < period + 1:
         return None
     high = daily["high"]
@@ -98,7 +98,8 @@ def calc_atr(daily: pd.DataFrame, period: int = 14) -> float | None:
         (high - prev_close).abs(),
         (low - prev_close).abs(),
     ], axis=1).max(axis=1)
-    atr = tr.rolling(window=period).mean()
+    # Wilder's smoothing: EMA with alpha = 1/period (matches industry standard)
+    atr = tr.ewm(alpha=1.0 / period, min_periods=period).mean()
     return float(atr.iloc[-1]) if not np.isnan(atr.iloc[-1]) else None
 
 
@@ -172,22 +173,34 @@ def compute_technical_score(metrics: dict) -> float:
     # 5. Momentum Score: recent price changes
     m1w = metrics.get("change_1w") or 0
     m1m = metrics.get("change_1m") or 0
+    # Cap individual momentum inputs at ±5% to prevent parabolic moves from
+    # saturating the score (e.g. a +20% month shouldn't score 100)
+    m1w = max(-5.0, min(5.0, m1w))
+    m1m = max(-5.0, min(5.0, m1m))
     # Positive = bullish, normalize roughly -5% to +5% → 0-100
     momentum = (m1w * 0.4 + m1m * 0.6)
     scores["momentum"] = max(0, min(100, 50 + momentum * 10))
 
-    # 6. Volatility Score: moderate ATR preferred
+    # 6. Volatility Score: moderate ATR preferred, calibrated per asset class
     atr = metrics.get("atr_14")
     current = metrics.get("current_price")
+    symbol = metrics.get("symbol", "")
     if atr is not None and current is not None and current > 0:
         atr_pct = atr / current * 100  # ATR as % of price
-        # Sweet spot: 0.5%-2.0% daily ATR
-        if 0.5 <= atr_pct <= 2.0:
-            scores["volatility"] = 100 - abs(atr_pct - 1.25) / 0.75 * 30
-        elif atr_pct < 0.5:
-            scores["volatility"] = atr_pct / 0.5 * 70
+        # Asset-class-specific sweet spots for daily ATR %
+        if symbol in ("XAUUSD", "XAGUSD"):
+            lo, hi, mid = 0.3, 1.2, 0.75   # Commodities: tighter range
+        elif symbol in ("JP225", "HK50", "AUS200"):
+            lo, hi, mid = 0.4, 1.8, 1.1    # Asian indices: wider range
         else:
-            scores["volatility"] = max(0, 100 - (atr_pct - 2.0) * 25)
+            lo, hi, mid = 0.5, 2.0, 1.25   # US/EU indices: default
+        if lo <= atr_pct <= hi:
+            half_range = (hi - lo) / 2.0
+            scores["volatility"] = 100 - abs(atr_pct - mid) / half_range * 30
+        elif atr_pct < lo:
+            scores["volatility"] = atr_pct / lo * 70
+        else:
+            scores["volatility"] = max(0, 100 - (atr_pct - hi) * 25)
     else:
         scores["volatility"] = 50
 
@@ -395,8 +408,12 @@ async def run_full_analysis() -> list[dict]:
             metrics["fundamental_score"] = fund_score
 
             # FinalScore = Technical×0.50 + Backtest×0.35 + Fundamental×0.15
+            # When backtest fails, use neutral 50 instead of 0 so the symbol
+            # isn't unfairly penalised (e.g. insufficient candle data)
             tech_part = metrics["technical_score"] * 0.50
-            bt_part = (bt["backtest_score"] * 0.35) if bt is not None else 0.0
+            bt_score = bt["backtest_score"] if bt is not None else 50.0
+            metrics.setdefault("backtest_score", bt_score)
+            bt_part = bt_score * 0.35
             fund_part = fund_score * 0.15
             metrics["final_score"] = round(tech_part + bt_part + fund_part, 1)
 

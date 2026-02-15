@@ -72,7 +72,10 @@ async def main():
             lines.append(f"\nFailed: {', '.join(failed_symbols)}")
         send_message("\n".join(lines))
 
-        if failed > 0:
+        # Only fail if majority of symbols failed (not on individual failures)
+        total = analyzed + failed
+        if total > 0 and failed > total / 2:
+            logger.error("Majority of symbols failed (%d/%d), exiting with error", failed, total)
             sys.exit(1)
 
     except Exception:

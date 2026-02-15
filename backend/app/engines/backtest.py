@@ -106,6 +106,12 @@ def simulate_trades(
 
     For each trading day: enter at entry_hour candle open (+ half spread),
     set SL and TP, walk forward until hit or next entry.
+
+    Realistic modeling:
+      - Entry spread: buy at ask (open + half_spread)
+      - Exit spread: sell at bid (deducted from P&L on every exit)
+      - Gap handling: if candle opens beyond SL/TP, fill at open price (slippage)
+      - Same-bar ambiguity: if both SL and TP hit, assume SL first (conservative)
     """
     opens = arrays["open"]
     highs = arrays["high"]
@@ -153,9 +159,12 @@ def simulate_trades(
 
     for i in range(len(entry_indices)):
         ei = entry_indices[i]
-        entry_price = opens[ei] + half_spread
+        entry_price = opens[ei] + half_spread  # Buy at ask
         sl_price = entry_price * sl_mult
         tp_price = entry_price * tp_mult
+
+        # Exit spread cost as % of entry price (deducted on every exit)
+        exit_spread_pct = half_spread / entry_price * 100.0
 
         # Determine the last candle to check (up to next entry or end of data)
         if i + 1 < len(entry_indices):
@@ -170,35 +179,55 @@ def simulate_trades(
         for j in range(ei, end_idx):
             low_j = lows[j]
             high_j = highs[j]
+            open_j = opens[j]
 
-            # Check SL and TP hits
+            # Gap detection (not on entry candle): if candle opens beyond
+            # SL/TP, the real fill is at the open price, not the SL/TP price.
+            # This models overnight/weekend gaps realistically.
+            if j > ei:
+                if open_j <= sl_price:
+                    # Gapped below SL — loss is worse than sl_pct
+                    trade_pnl_pct = (open_j - entry_price) / entry_price * 100.0 - exit_spread_pct
+                    losses += 1
+                    gross_loss += abs(trade_pnl_pct)
+                    resolved = True
+                    break
+                if open_j >= tp_price:
+                    # Gapped above TP — profit is better than tp_pct
+                    trade_pnl_pct = (open_j - entry_price) / entry_price * 100.0 - exit_spread_pct
+                    wins += 1
+                    gross_profit += trade_pnl_pct
+                    resolved = True
+                    break
+
+            # Check SL and TP hits within the candle
             sl_hit = low_j <= sl_price
             tp_hit = high_j >= tp_price
 
             if sl_hit and tp_hit:
                 # Both hit in same candle — assume SL first (conservative)
-                trade_pnl_pct = -sl_pct
+                trade_pnl_pct = -sl_pct - exit_spread_pct
                 losses += 1
-                gross_loss += sl_pct
+                gross_loss += abs(trade_pnl_pct)
                 resolved = True
                 break
             elif sl_hit:
-                trade_pnl_pct = -sl_pct
+                trade_pnl_pct = -sl_pct - exit_spread_pct
                 losses += 1
-                gross_loss += sl_pct
+                gross_loss += abs(trade_pnl_pct)
                 resolved = True
                 break
             elif tp_hit:
-                trade_pnl_pct = tp_pct
+                trade_pnl_pct = tp_pct - exit_spread_pct
                 wins += 1
-                gross_profit += tp_pct
+                gross_profit += trade_pnl_pct
                 resolved = True
                 break
 
         if not resolved:
-            # Close at last available candle's close
+            # Close at last available candle's close (exit spread applies)
             close_price = closes[end_idx - 1]
-            trade_pnl_pct = (close_price - entry_price) / entry_price * 100.0
+            trade_pnl_pct = (close_price - entry_price) / entry_price * 100.0 - exit_spread_pct
             if trade_pnl_pct >= 0:
                 wins += 1
                 gross_profit += trade_pnl_pct
