@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { createChart } from "lightweight-charts";
-import { fetchSymbolAnalytics, fetchCandles, overrideMarket, fetchFundamental, fetchFundamentalEvents, fetchAIPredictions } from "./api";
+import { fetchSymbolAnalytics, fetchCandles, fetchTrades, overrideMarket, fetchFundamental, fetchFundamentalEvents, fetchAIPredictions } from "./api";
 
 const SYMBOL_REGION = {
   XAUUSD: "commodities", XAGUSD: "commodities",
@@ -72,8 +72,11 @@ function rsiLabel(rsi) {
   return "Neutral";
 }
 
-function CandleChart({ symbol }) {
+// ─── Trade Chart with markers ──────────────────────────────────────────────────
+
+function TradeChart({ symbol, trades, onChartReady }) {
   const containerRef = useRef(null);
+  const chartRef = useRef(null);
   const [noData, setNoData] = useState(false);
 
   useEffect(() => {
@@ -81,20 +84,31 @@ function CandleChart({ symbol }) {
 
     const chart = createChart(containerRef.current, {
       layout: {
-        background: { color: "#111827" },
+        background: { color: "#0B1120" },
         textColor: "#9CA3AF",
       },
       grid: {
-        vertLines: { color: "#1F2937" },
-        horzLines: { color: "#1F2937" },
+        vertLines: { color: "#1a2235" },
+        horzLines: { color: "#1a2235" },
       },
       width: containerRef.current.clientWidth,
-      height: 400,
+      height: 550,
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
+        borderColor: "#1F2937",
+      },
+      rightPriceScale: {
+        borderColor: "#1F2937",
+      },
+      crosshair: {
+        mode: 0,
+        vertLine: { color: "#4B5563", width: 1, style: 2 },
+        horzLine: { color: "#4B5563", width: 1, style: 2 },
       },
     });
+
+    chartRef.current = chart;
 
     const candleSeries = chart.addCandlestickSeries({
       upColor: "#22C55E",
@@ -105,14 +119,49 @@ function CandleChart({ symbol }) {
       wickUpColor: "#22C55E",
     });
 
-    fetchCandles(symbol, 1000)
+    fetchCandles(symbol, 2000)
       .then((candles) => {
         if (candles.length === 0) {
           setNoData(true);
           return;
         }
         candleSeries.setData(candles);
+
+        // Add trade markers
+        if (trades && trades.length > 0) {
+          const markers = [];
+          for (const t of trades) {
+            // Entry marker
+            if (t.open_time) {
+              markers.push({
+                time: Math.floor(new Date(t.open_time).getTime() / 1000),
+                position: "belowBar",
+                color: "#22C55E",
+                shape: "arrowUp",
+                text: `BUY ${t.lot_size ? t.lot_size.toFixed(2) : ""}`,
+              });
+            }
+            // Exit marker
+            if (t.close_time && t.result) {
+              const isWin = t.result === "win";
+              markers.push({
+                time: Math.floor(new Date(t.close_time).getTime() / 1000),
+                position: "aboveBar",
+                color: isWin ? "#22C55E" : "#EF4444",
+                shape: "arrowDown",
+                text: isWin
+                  ? `TP ${t.pnl_percent != null ? "+" + t.pnl_percent.toFixed(2) + "%" : ""}`
+                  : `SL ${t.pnl_percent != null ? t.pnl_percent.toFixed(2) + "%" : ""}`,
+              });
+            }
+          }
+          // lightweight-charts requires markers sorted by time
+          markers.sort((a, b) => a.time - b.time);
+          candleSeries.setMarkers(markers);
+        }
+
         chart.timeScale().fitContent();
+        if (onChartReady) onChartReady(chart);
       })
       .catch(() => setNoData(true));
 
@@ -126,19 +175,306 @@ function CandleChart({ symbol }) {
     return () => {
       resizeObserver.disconnect();
       chart.remove();
+      chartRef.current = null;
     };
-  }, [symbol]);
+  }, [symbol, trades]);
 
   if (noData) {
     return (
-      <div className="bg-gray-900 rounded-lg p-8 text-center text-gray-500">
+      <div className="bg-gray-900/60 rounded-lg p-8 text-center text-gray-500">
         No candle data available yet. Data will appear after the first Friday upload.
       </div>
     );
   }
 
-  return <div ref={containerRef} className="rounded-lg overflow-hidden" />;
+  return <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-800" />;
 }
+
+// ─── Equity Curve ──────────────────────────────────────────────────────────────
+
+function EquityCurve({ trades }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current || !trades || trades.length === 0) return;
+
+    const chart = createChart(containerRef.current, {
+      layout: {
+        background: { color: "#0B1120" },
+        textColor: "#9CA3AF",
+      },
+      grid: {
+        vertLines: { color: "#1a2235" },
+        horzLines: { color: "#1a2235" },
+      },
+      width: containerRef.current.clientWidth,
+      height: 200,
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        borderColor: "#1F2937",
+      },
+      rightPriceScale: {
+        borderColor: "#1F2937",
+      },
+    });
+
+    const lineSeries = chart.addAreaSeries({
+      topColor: "rgba(34, 197, 94, 0.3)",
+      bottomColor: "rgba(34, 197, 94, 0.02)",
+      lineColor: "#22C55E",
+      lineWidth: 2,
+    });
+
+    // Build cumulative PnL data from trades (sorted oldest first)
+    const sorted = [...trades]
+      .filter((t) => t.close_time && t.pnl_percent != null)
+      .sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
+
+    let cumPnl = 0;
+    const data = [{ time: Math.floor(new Date(sorted[0]?.open_time || Date.now()).getTime() / 1000), value: 0 }];
+    for (const t of sorted) {
+      cumPnl += t.pnl_percent;
+      data.push({
+        time: Math.floor(new Date(t.close_time).getTime() / 1000),
+        value: parseFloat(cumPnl.toFixed(4)),
+      });
+    }
+
+    // If cumulative PnL goes negative, switch to red
+    const isNegative = cumPnl < 0;
+    if (isNegative) {
+      lineSeries.applyOptions({
+        topColor: "rgba(239, 68, 68, 0.02)",
+        bottomColor: "rgba(239, 68, 68, 0.3)",
+        lineColor: "#EF4444",
+      });
+    }
+
+    lineSeries.setData(data);
+    chart.timeScale().fitContent();
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        chart.applyOptions({ width: entry.contentRect.width });
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      chart.remove();
+    };
+  }, [trades]);
+
+  if (!trades || trades.length === 0) return null;
+
+  return (
+    <div className="mb-8">
+      <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">
+        Equity Curve
+      </h3>
+      <div ref={containerRef} className="rounded-lg overflow-hidden border border-gray-800" />
+    </div>
+  );
+}
+
+// ─── Performance Stats ─────────────────────────────────────────────────────────
+
+function PerformanceStats({ trades }) {
+  if (!trades || trades.length === 0) return null;
+
+  const closed = trades.filter((t) => t.result && t.pnl_percent != null);
+  if (closed.length === 0) return null;
+
+  const wins = closed.filter((t) => t.result === "win");
+  const losses = closed.filter((t) => t.result === "loss");
+
+  const totalTrades = closed.length;
+  const winRate = (wins.length / totalTrades) * 100;
+  const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.pnl_percent, 0) / wins.length : 0;
+  const avgLoss = losses.length > 0 ? losses.reduce((s, t) => s + t.pnl_percent, 0) / losses.length : 0;
+  const grossWins = wins.reduce((s, t) => s + t.pnl_percent, 0);
+  const grossLosses = Math.abs(losses.reduce((s, t) => s + t.pnl_percent, 0));
+  const profitFactor = grossLosses > 0 ? grossWins / grossLosses : grossWins > 0 ? Infinity : 0;
+
+  const bestTrade = closed.reduce((best, t) => (t.pnl_percent > (best?.pnl_percent ?? -Infinity) ? t : best), null);
+  const worstTrade = closed.reduce((worst, t) => (t.pnl_percent < (worst?.pnl_percent ?? Infinity) ? t : worst), null);
+
+  const totalPnl = closed.reduce((s, t) => s + t.pnl_percent, 0);
+
+  // Max drawdown from equity curve
+  const sorted = [...closed].sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
+  let peak = 0;
+  let cumPnl = 0;
+  let maxDD = 0;
+  for (const t of sorted) {
+    cumPnl += t.pnl_percent;
+    if (cumPnl > peak) peak = cumPnl;
+    const dd = peak - cumPnl;
+    if (dd > maxDD) maxDD = dd;
+  }
+
+  // Current streak
+  let streak = 0;
+  let streakType = null;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const r = sorted[i].result;
+    if (streakType === null) {
+      streakType = r;
+      streak = 1;
+    } else if (r === streakType) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+
+  // Avg trade duration
+  let totalDuration = 0;
+  let durationCount = 0;
+  for (const t of closed) {
+    if (t.open_time && t.close_time) {
+      totalDuration += new Date(t.close_time) - new Date(t.open_time);
+      durationCount++;
+    }
+  }
+  const avgDurationHrs = durationCount > 0 ? totalDuration / durationCount / 3600000 : 0;
+
+  const Stat = ({ label, value, color }) => (
+    <div>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className={`text-lg font-mono font-bold ${color || "text-gray-200"}`}>{value}</p>
+    </div>
+  );
+
+  return (
+    <div className="bg-gray-900/60 rounded-lg p-5 border border-gray-800">
+      <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+        Trade Performance
+      </h4>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Stat label="Total Trades" value={totalTrades} />
+        <Stat label="Win Rate" value={`${winRate.toFixed(1)}%`} color={winRate >= 50 ? "text-green-400" : "text-red-400"} />
+        <Stat label="Total P&L" value={`${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}%`} color={totalPnl >= 0 ? "text-green-400" : "text-red-400"} />
+        <Stat label="Profit Factor" value={profitFactor === Infinity ? "INF" : profitFactor.toFixed(2)} color={profitFactor >= 1.5 ? "text-green-400" : profitFactor >= 1 ? "text-yellow-400" : "text-red-400"} />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-800">
+        <Stat label="Avg Win" value={`+${avgWin.toFixed(2)}%`} color="text-green-400" />
+        <Stat label="Avg Loss" value={`${avgLoss.toFixed(2)}%`} color="text-red-400" />
+        <Stat label="Best Trade" value={bestTrade ? `+${bestTrade.pnl_percent.toFixed(2)}%` : "\u2014"} color="text-green-400" />
+        <Stat label="Worst Trade" value={worstTrade ? `${worstTrade.pnl_percent.toFixed(2)}%` : "\u2014"} color="text-red-400" />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-800">
+        <Stat label="Max Drawdown" value={`-${maxDD.toFixed(2)}%`} color="text-red-400" />
+        <Stat
+          label="Current Streak"
+          value={`${streak} ${streakType === "win" ? "W" : "L"}`}
+          color={streakType === "win" ? "text-green-400" : "text-red-400"}
+        />
+        <Stat label="Avg Duration" value={avgDurationHrs < 24 ? `${avgDurationHrs.toFixed(1)}h` : `${(avgDurationHrs / 24).toFixed(1)}d`} />
+        <Stat label="Wins / Losses" value={`${wins.length} / ${losses.length}`} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Trade History Table ───────────────────────────────────────────────────────
+
+function TradeTable({ trades, chartRef }) {
+  if (!trades || trades.length === 0) return null;
+
+  const closed = trades
+    .filter((t) => t.result)
+    .sort((a, b) => new Date(b.close_time) - new Date(a.close_time));
+
+  if (closed.length === 0) return null;
+
+  const scrollToTrade = (t) => {
+    if (!chartRef?.current) return;
+    const time = Math.floor(new Date(t.open_time).getTime() / 1000);
+    const closeTime = t.close_time ? Math.floor(new Date(t.close_time).getTime() / 1000) : time;
+    const padding = (closeTime - time) * 0.5 || 3600 * 24;
+    chartRef.current.timeScale().setVisibleRange({
+      from: time - padding,
+      to: closeTime + padding,
+    });
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return "\u2014";
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) +
+      " " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const fmtPrice = (val) => {
+    if (val == null) return "\u2014";
+    return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 });
+  };
+
+  return (
+    <div className="mb-8">
+      <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">
+        Trade History
+      </h3>
+      <div className="bg-gray-900/60 rounded-lg border border-gray-800 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-gray-500 uppercase border-b border-gray-800">
+              <th className="px-3 py-2 text-left">Date</th>
+              <th className="px-3 py-2 text-right">Entry</th>
+              <th className="px-3 py-2 text-right">Exit</th>
+              <th className="px-3 py-2 text-right">SL</th>
+              <th className="px-3 py-2 text-right">TP</th>
+              <th className="px-3 py-2 text-right">Lots</th>
+              <th className="px-3 py-2 text-right">P&L</th>
+              <th className="px-3 py-2 text-center">Result</th>
+            </tr>
+          </thead>
+          <tbody>
+            {closed.map((t) => {
+              const isWin = t.result === "win";
+              return (
+                <tr
+                  key={t.id}
+                  onClick={() => scrollToTrade(t)}
+                  className={`border-b border-gray-800/50 cursor-pointer transition hover:bg-gray-800/50 ${
+                    isWin ? "hover:bg-green-900/10" : "hover:bg-red-900/10"
+                  }`}
+                >
+                  <td className="px-3 py-2 text-gray-300 whitespace-nowrap">{fmtDate(t.open_time)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-gray-300">{fmtPrice(t.open_price)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-gray-300">{fmtPrice(t.close_price)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-red-400/60">{fmtPrice(t.sl_price)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-green-400/60">{fmtPrice(t.tp_price)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-gray-400">{t.lot_size ? t.lot_size.toFixed(2) : "\u2014"}</td>
+                  <td className={`px-3 py-2 text-right font-mono font-bold ${isWin ? "text-green-400" : "text-red-400"}`}>
+                    {t.pnl_percent != null ? `${t.pnl_percent >= 0 ? "+" : ""}${t.pnl_percent.toFixed(2)}%` : "\u2014"}
+                    {t.pnl_amount != null && (
+                      <span className="text-xs text-gray-500 ml-1">
+                        (${t.pnl_amount >= 0 ? "+" : ""}{t.pnl_amount.toFixed(0)})
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${
+                      isWin ? "bg-green-900/40 text-green-400" : "bg-red-900/40 text-red-400"
+                    }`}>
+                      {t.result}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Metric Row helper ─────────────────────────────────────────────────────────
 
 function MetricRow({ label, children }) {
   return (
@@ -149,15 +485,19 @@ function MetricRow({ label, children }) {
   );
 }
 
+// ─── Main Component ────────────────────────────────────────────────────────────
+
 export default function MarketDetail({ markets }) {
   const { symbol } = useParams();
   const [analytics, setAnalytics] = useState(null);
+  const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [overriding, setOverriding] = useState(false);
   const [regionOutlook, setRegionOutlook] = useState(null);
   const [events, setEvents] = useState([]);
   const [aiPrediction, setAiPrediction] = useState(null);
+  const chartInstanceRef = useRef(null);
 
   const market = markets.find((m) => m.symbol === symbol);
   const region = SYMBOL_REGION[symbol];
@@ -174,33 +514,27 @@ export default function MarketDetail({ markets }) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetchSymbolAnalytics(symbol)
-      .then(setAnalytics)
-      .catch((e) => {
-        if (e.message.includes("404")) {
-          setAnalytics(null);
-        } else {
-          setError(e.message);
-        }
-      })
-      .finally(() => setLoading(false));
-
-    // Fetch fundamental data
-    fetchFundamental()
-      .then((outlooks) => {
+    Promise.all([
+      fetchSymbolAnalytics(symbol).catch((e) => {
+        if (e.message.includes("404")) return null;
+        throw e;
+      }),
+      fetchTrades(symbol).catch(() => []),
+      fetchFundamental().catch(() => []),
+      fetchFundamentalEvents().catch(() => []),
+      fetchAIPredictions().catch(() => []),
+    ])
+      .then(([analyticsData, tradesData, outlooks, evts, aiData]) => {
+        setAnalytics(analyticsData);
+        setTrades(tradesData);
         const match = outlooks.find((o) => o.region === region);
         if (match) setRegionOutlook(match);
+        setEvents(evts.filter((e) => e.region === region));
+        const aiMatch = aiData.find((p) => p.symbol === symbol);
+        if (aiMatch) setAiPrediction(aiMatch);
       })
-      .catch(() => {});
-    fetchFundamentalEvents()
-      .then((evts) => setEvents(evts.filter((e) => e.region === region)))
-      .catch(() => {});
-    fetchAIPredictions()
-      .then((preds) => {
-        const match = preds.find((p) => p.symbol === symbol);
-        if (match) setAiPrediction(match);
-      })
-      .catch(() => {});
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, [symbol, region]);
 
   const handleOverride = (active) => {
@@ -307,16 +641,75 @@ export default function MarketDetail({ markets }) {
         </p>
       )}
 
-      {/* Chart */}
+      {/* Chart with trade markers */}
       <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-3">H1 Chart</h3>
-        <CandleChart symbol={symbol} />
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold">H1 Chart</h3>
+          {trades.length > 0 && (
+            <span className="text-xs text-gray-500">
+              {trades.filter((t) => t.result).length} trades plotted
+            </span>
+          )}
+        </div>
+        <TradeChart
+          symbol={symbol}
+          trades={trades}
+          onChartReady={(chart) => { chartInstanceRef.current = chart; }}
+        />
       </div>
 
       {loading && <p className="text-gray-400">Loading analytics...</p>}
       {error && (
         <p className="text-red-400 bg-red-950 px-4 py-3 rounded mb-4">{error}</p>
       )}
+
+      {/* Equity Curve */}
+      <EquityCurve trades={trades} />
+
+      {/* Performance Stats + Current Config side by side */}
+      {(trades.length > 0 || a) && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-2">
+            <PerformanceStats trades={trades} />
+          </div>
+          {a?.opt_entry_hour != null && (
+            <div className="bg-gray-900/60 rounded-lg p-5 border border-gray-800">
+              <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+                Current Week Config
+              </h4>
+              <MetricRow label="Entry Time">
+                <span className="text-white font-bold">
+                  {String(a.opt_entry_hour ?? 0).padStart(2, "0")}:
+                  {String(a.opt_entry_minute ?? 0).padStart(2, "0")}
+                </span>
+              </MetricRow>
+              <MetricRow label="Stop Loss">
+                <span className="text-red-400">{fmt(a.opt_sl_percent)}%</span>
+              </MetricRow>
+              <MetricRow label="Take Profit">
+                <span className="text-green-400">{fmt(a.opt_tp_percent)}%</span>
+              </MetricRow>
+              <MetricRow label="Status">
+                <span className={a.is_active ? "text-green-400" : "text-gray-500"}>
+                  {a.is_active ? "Active" : "Inactive"}
+                  {a.rank != null && ` (Rank #${a.rank})`}
+                </span>
+              </MetricRow>
+              <MetricRow label="Param Stability">
+                <span className={(a.bt_param_stability ?? 0) < 50 ? "text-yellow-400" : "text-green-400"}>
+                  {fmt(a.bt_param_stability, 0)}%
+                </span>
+              </MetricRow>
+              <MetricRow label="Week">
+                <span className="text-gray-300">{a.week_start}</span>
+              </MetricRow>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Trade History Table */}
+      <TradeTable trades={trades} chartRef={chartInstanceRef} />
 
       {/* Metrics Grid */}
       {a && (
@@ -549,7 +942,7 @@ export default function MarketDetail({ markets }) {
             <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
               AI Market Analysis
               <span className="ml-2 text-xs font-normal text-gray-500 normal-case">
-                Updated {aiPrediction.updated_at ? new Date(aiPrediction.updated_at).toLocaleDateString() : "—"}
+                Updated {aiPrediction.updated_at ? new Date(aiPrediction.updated_at).toLocaleDateString() : "\u2014"}
               </span>
             </h4>
 
@@ -652,7 +1045,7 @@ export default function MarketDetail({ markets }) {
         </p>
       )}
 
-      {!loading && !error && !a && (
+      {!loading && !error && !a && trades.length === 0 && (
         <div className="bg-gray-900 rounded-lg p-8 text-center text-gray-500">
           No analytics data available yet. Run the analysis after candle data has been uploaded.
         </div>

@@ -52,6 +52,10 @@ export function fetchAIPredictions() {
   return apiFetch("/api/fundamental/ai-predictions");
 }
 
+export function fetchTrades(symbol) {
+  return apiFetch(`/api/trades/${symbol}`);
+}
+
 export function fetchResults() {
   return apiFetch("/api/results");
 }
