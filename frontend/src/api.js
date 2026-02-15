@@ -40,6 +40,14 @@ export function overrideMarket(symbol, active) {
   });
 }
 
+export function fetchFundamental() {
+  return apiFetch("/api/fundamental");
+}
+
+export function fetchFundamentalEvents() {
+  return apiFetch("/api/fundamental/events");
+}
+
 export function setApiKey(key) {
   localStorage.setItem("le_api_key", key);
   window.location.reload();

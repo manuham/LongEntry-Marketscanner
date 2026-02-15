@@ -22,6 +22,7 @@ import pandas as pd
 from app.config import settings
 from app.database import get_pool
 from app.engines.backtest import run_backtest_for_symbol
+from app.engines.fundamental import score_symbol as fundamental_score_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -289,14 +290,15 @@ async def store_analysis(metrics: dict) -> None:
                 (symbol, week_start, technical_score,
                  avg_daily_growth, avg_daily_loss,
                  most_bullish_day, most_bearish_day, up_day_win_rate,
-                 backtest_score, opt_entry_hour, opt_entry_minute,
+                 backtest_score, fundamental_score,
+                 opt_entry_hour, opt_entry_minute,
                  opt_sl_percent, opt_tp_percent,
                  bt_total_return, bt_win_rate, bt_profit_factor,
                  bt_total_trades, bt_max_drawdown, bt_param_stability,
                  final_score, rank, is_active)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-                    $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
-                    $20, $21, $22)
+                    $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+                    $21, $22, $23)
             ON CONFLICT (symbol, week_start)
             DO UPDATE SET
                 technical_score = EXCLUDED.technical_score,
@@ -306,6 +308,7 @@ async def store_analysis(metrics: dict) -> None:
                 most_bearish_day = EXCLUDED.most_bearish_day,
                 up_day_win_rate = EXCLUDED.up_day_win_rate,
                 backtest_score = EXCLUDED.backtest_score,
+                fundamental_score = EXCLUDED.fundamental_score,
                 opt_entry_hour = EXCLUDED.opt_entry_hour,
                 opt_entry_minute = EXCLUDED.opt_entry_minute,
                 opt_sl_percent = EXCLUDED.opt_sl_percent,
@@ -332,6 +335,7 @@ async def store_analysis(metrics: dict) -> None:
             metrics["most_bearish_day"],
             metrics["up_day_win_rate"],
             metrics.get("backtest_score"),
+            metrics.get("fundamental_score"),
             metrics.get("opt_entry_hour"),
             metrics.get("opt_entry_minute", 0),
             metrics.get("opt_sl_percent"),
@@ -385,21 +389,24 @@ async def run_full_analysis() -> list[dict]:
             bt = await run_backtest_for_symbol(symbol, h1, week_start)
             if bt is not None:
                 metrics.update(bt)
-                # FinalScore = Technical×0.50 + Backtest×0.35 (Fundamental=0 for now)
-                metrics["final_score"] = round(
-                    metrics["technical_score"] * 0.50 + bt["backtest_score"] * 0.35,
-                    1,
-                )
-            else:
-                # No backtest — use technical score only
-                metrics["final_score"] = round(metrics["technical_score"] * 0.50, 1)
+
+            # Compute fundamental score
+            fund_score = await fundamental_score_symbol(symbol, week_start)
+            metrics["fundamental_score"] = fund_score
+
+            # FinalScore = Technical×0.50 + Backtest×0.35 + Fundamental×0.15
+            tech_part = metrics["technical_score"] * 0.50
+            bt_part = (bt["backtest_score"] * 0.35) if bt is not None else 0.0
+            fund_part = fund_score * 0.15
+            metrics["final_score"] = round(tech_part + bt_part + fund_part, 1)
 
             results.append(metrics)
             logger.info(
-                "Analyzed %s: tech=%.1f, bt=%.1f, final=%.1f",
+                "Analyzed %s: tech=%.1f, bt=%.1f, fund=%.1f, final=%.1f",
                 symbol,
                 metrics["technical_score"],
                 metrics.get("backtest_score", 0),
+                metrics.get("fundamental_score", 0),
                 metrics["final_score"],
             )
         except Exception:

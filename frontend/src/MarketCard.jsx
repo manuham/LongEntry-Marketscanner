@@ -118,6 +118,27 @@ export default function MarketCard({ market, analytics }) {
             </div>
           </div>
 
+          {/* Score breakdown */}
+          {(a.technical_score != null || a.backtest_score != null || a.fundamental_score != null) && (
+            <div className="pt-2 border-t border-gray-800 flex gap-3 text-xs">
+              {a.technical_score != null && (
+                <span className="text-gray-400">
+                  T: <span className={`font-mono ${scoreColor(a.technical_score)}`}>{fmt(a.technical_score, 0)}</span>
+                </span>
+              )}
+              {a.backtest_score != null && (
+                <span className="text-gray-400">
+                  B: <span className={`font-mono ${scoreColor(a.backtest_score)}`}>{fmt(a.backtest_score, 0)}</span>
+                </span>
+              )}
+              {a.fundamental_score != null && (
+                <span className="text-gray-400">
+                  F: <span className={`font-mono ${scoreColor(a.fundamental_score)}`}>{fmt(a.fundamental_score, 0)}</span>
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Backtest summary */}
           {a.bt_total_return != null && (
             <div className="pt-2 border-t border-gray-800 text-xs text-gray-400">

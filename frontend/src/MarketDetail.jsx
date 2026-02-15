@@ -1,7 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { createChart } from "lightweight-charts";
-import { fetchSymbolAnalytics, fetchCandles, overrideMarket } from "./api";
+import { fetchSymbolAnalytics, fetchCandles, overrideMarket, fetchFundamental, fetchFundamentalEvents } from "./api";
+
+const SYMBOL_REGION = {
+  XAUUSD: "commodities", XAGUSD: "commodities",
+  US500: "US", US100: "US", US30: "US",
+  GER40: "EU", EU50: "EU", FRA40: "EU", SPN35: "EU", N25: "EU",
+  UK100: "UK", JP225: "JP", AUS200: "AU", HK50: "HK",
+};
+
+const STANCE_LABELS = { "-1": "Hawkish", "0": "Neutral", "1": "Dovish" };
+const GROWTH_LABELS = { "-1": "Contracting", "0": "Stable", "1": "Expanding" };
+const INFLATION_LABELS = { "-1": "Falling", "0": "Stable", "1": "Rising" };
+const RISK_LABELS = { "-1": "Risk-Off", "0": "Neutral", "1": "Risk-On" };
+
+function stanceColor(val) {
+  if (val === 1) return "text-green-400";
+  if (val === -1) return "text-red-400";
+  return "text-gray-400";
+}
 
 function fmt(val, decimals = 2) {
   if (val == null) return "\u2014";
@@ -137,8 +155,11 @@ export default function MarketDetail({ markets }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [overriding, setOverriding] = useState(false);
+  const [regionOutlook, setRegionOutlook] = useState(null);
+  const [events, setEvents] = useState([]);
 
   const market = markets.find((m) => m.symbol === symbol);
+  const region = SYMBOL_REGION[symbol];
 
   const refreshAnalytics = () => {
     fetchSymbolAnalytics(symbol)
@@ -162,7 +183,18 @@ export default function MarketDetail({ markets }) {
         }
       })
       .finally(() => setLoading(false));
-  }, [symbol]);
+
+    // Fetch fundamental data
+    fetchFundamental()
+      .then((outlooks) => {
+        const match = outlooks.find((o) => o.region === region);
+        if (match) setRegionOutlook(match);
+      })
+      .catch(() => {});
+    fetchFundamentalEvents()
+      .then((evts) => setEvents(evts.filter((e) => e.region === region)))
+      .catch(() => {});
+  }, [symbol, region]);
 
   const handleOverride = (active) => {
     setOverriding(true);
@@ -464,17 +496,23 @@ export default function MarketDetail({ markets }) {
             </div>
 
             {/* Scores row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-800">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4 pt-4 border-t border-gray-800">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Technical Score</p>
+                <p className="text-xs text-gray-500 mb-1">Technical (50%)</p>
                 <p className={`text-sm font-mono ${scoreColor(a.technical_score ?? 0)}`}>
                   {fmt(a.technical_score, 1)}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500 mb-1">Backtest Score</p>
+                <p className="text-xs text-gray-500 mb-1">Backtest (35%)</p>
                 <p className={`text-sm font-mono ${scoreColor(a.backtest_score ?? 0)}`}>
                   {fmt(a.backtest_score, 1)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Fundamental (15%)</p>
+                <p className={`text-sm font-mono ${scoreColor(a.fundamental_score ?? 0)}`}>
+                  {fmt(a.fundamental_score, 1)}
                 </p>
               </div>
               <div>
@@ -493,6 +531,74 @@ export default function MarketDetail({ markets }) {
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fundamental Outlook */}
+      {regionOutlook && (
+        <div className="mb-8">
+          <div className="bg-gray-900 rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+              Fundamental Outlook
+              <span className="ml-2 text-xs font-normal text-gray-500 normal-case">
+                Region: {region}
+              </span>
+            </h4>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Central Bank</p>
+                <p className={`text-sm font-mono ${stanceColor(regionOutlook.cb_stance)}`}>
+                  {STANCE_LABELS[String(regionOutlook.cb_stance)]}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Growth</p>
+                <p className={`text-sm font-mono ${stanceColor(regionOutlook.growth_outlook)}`}>
+                  {GROWTH_LABELS[String(regionOutlook.growth_outlook)]}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Inflation</p>
+                <p className={`text-sm font-mono ${stanceColor(regionOutlook.inflation_trend === -1 ? 1 : regionOutlook.inflation_trend === 1 ? -1 : 0)}`}>
+                  {INFLATION_LABELS[String(regionOutlook.inflation_trend)]}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Risk Sentiment</p>
+                <p className={`text-sm font-mono ${stanceColor(regionOutlook.risk_sentiment)}`}>
+                  {RISK_LABELS[String(regionOutlook.risk_sentiment)]}
+                </p>
+              </div>
+            </div>
+
+            {regionOutlook.notes && (
+              <p className="mt-3 pt-3 border-t border-gray-800 text-sm text-gray-400">
+                {regionOutlook.notes}
+              </p>
+            )}
+
+            {events.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-800">
+                <p className="text-xs text-gray-500 mb-2">Upcoming Events</p>
+                <div className="space-y-1">
+                  {events.map((evt) => (
+                    <div key={evt.id} className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500 font-mono">{evt.event_date}</span>
+                      <span className={
+                        evt.impact === "high" ? "px-1 rounded bg-red-900/40 text-red-400" :
+                        evt.impact === "medium" ? "px-1 rounded bg-yellow-900/40 text-yellow-400" :
+                        "px-1 rounded bg-gray-800 text-gray-400"
+                      }>
+                        {evt.impact}
+                      </span>
+                      <span className="text-gray-300">{evt.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

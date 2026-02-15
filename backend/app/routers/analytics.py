@@ -21,7 +21,8 @@ _ANALYSIS_COLS = """
     symbol, week_start, technical_score,
     avg_daily_growth, avg_daily_loss,
     most_bullish_day, most_bearish_day, up_day_win_rate,
-    backtest_score, final_score, rank, is_active, is_manually_overridden,
+    backtest_score, fundamental_score,
+    final_score, rank, is_active, is_manually_overridden,
     opt_entry_hour, opt_sl_percent, opt_tp_percent,
     bt_total_return, bt_win_rate, bt_profit_factor,
     bt_total_trades, bt_max_drawdown, bt_param_stability
@@ -39,6 +40,7 @@ def _row_to_summary(r) -> AnalysisSummary:
         most_bearish_day=r["most_bearish_day"],
         up_day_win_rate=r["up_day_win_rate"],
         backtest_score=r["backtest_score"],
+        fundamental_score=r["fundamental_score"],
         final_score=r["final_score"],
         rank=r["rank"],
         is_active=r["is_active"] or False,
@@ -106,11 +108,12 @@ async def get_symbol_analytics(symbol: str):
             detail=f"No candle data available for {symbol}",
         )
 
-    # Merge stored backtest data from weekly_analysis
+    # Merge stored backtest + fundamental data from weekly_analysis
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT backtest_score, final_score, rank, is_active,
+            SELECT backtest_score, fundamental_score,
+                   final_score, rank, is_active,
                    is_manually_overridden,
                    opt_entry_hour, opt_sl_percent, opt_tp_percent,
                    bt_total_return, bt_win_rate, bt_profit_factor,
