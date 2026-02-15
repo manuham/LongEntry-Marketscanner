@@ -108,7 +108,10 @@ def call_claude(headlines: list[str]) -> dict:
     )
 
     text = response.content[0].text.strip()
-    # Parse JSON response
+    # Strip markdown code fences if present
+    import re
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
     return json.loads(text)
 
 
