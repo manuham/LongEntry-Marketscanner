@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { createChart } from "lightweight-charts";
-import { fetchSymbolAnalytics, fetchCandles, overrideMarket, fetchFundamental, fetchFundamentalEvents } from "./api";
+import { fetchSymbolAnalytics, fetchCandles, overrideMarket, fetchFundamental, fetchFundamentalEvents, fetchAIPredictions } from "./api";
 
 const SYMBOL_REGION = {
   XAUUSD: "commodities", XAGUSD: "commodities",
@@ -157,6 +157,7 @@ export default function MarketDetail({ markets }) {
   const [overriding, setOverriding] = useState(false);
   const [regionOutlook, setRegionOutlook] = useState(null);
   const [events, setEvents] = useState([]);
+  const [aiPrediction, setAiPrediction] = useState(null);
 
   const market = markets.find((m) => m.symbol === symbol);
   const region = SYMBOL_REGION[symbol];
@@ -193,6 +194,12 @@ export default function MarketDetail({ markets }) {
       .catch(() => {});
     fetchFundamentalEvents()
       .then((evts) => setEvents(evts.filter((e) => e.region === region)))
+      .catch(() => {});
+    fetchAIPredictions()
+      .then((preds) => {
+        const match = preds.find((p) => p.symbol === symbol);
+        if (match) setAiPrediction(match);
+      })
       .catch(() => {});
   }, [symbol, region]);
 
@@ -531,6 +538,40 @@ export default function MarketDetail({ markets }) {
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Market Prediction */}
+      {aiPrediction && (
+        <div className="mb-8">
+          <div className="bg-gray-900 rounded-lg p-5">
+            <h4 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+              AI Market Analysis
+              <span className="ml-2 text-xs font-normal text-gray-500 normal-case">
+                Updated {aiPrediction.updated_at ? new Date(aiPrediction.updated_at).toLocaleDateString() : "—"}
+              </span>
+            </h4>
+
+            <div className="flex items-center gap-4 mb-3">
+              <span className={`text-sm font-bold uppercase px-3 py-1 rounded ${
+                aiPrediction.prediction === "bullish" ? "bg-green-900/50 text-green-400" :
+                aiPrediction.prediction === "bearish" ? "bg-red-900/50 text-red-400" :
+                "bg-gray-800 text-gray-400"
+              }`}>
+                {aiPrediction.prediction}
+              </span>
+              <span className="text-sm text-gray-400">
+                Score: <span className={`font-mono font-bold ${scoreColor(aiPrediction.score)}`}>{aiPrediction.score.toFixed(0)}</span>
+                <span className="text-gray-600">/100</span>
+              </span>
+            </div>
+
+            {aiPrediction.reasoning && (
+              <p className="text-sm text-gray-300 leading-relaxed">
+                {aiPrediction.reasoning}
+              </p>
+            )}
           </div>
         </div>
       )}

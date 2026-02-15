@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.config import settings
 from app.database import get_pool, close_pool
 from app.logging_config import setup_logging
+from app.telegram import send_message
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -224,6 +225,17 @@ async def main():
         logger.exception("Failed to store predictions in database")
     finally:
         await close_pool()
+
+    # Send Telegram summary
+    bullish = [s for s, d in predictions.items() if s in MARKETS and d.get("prediction") == "bullish"]
+    bearish = [s for s, d in predictions.items() if s in MARKETS and d.get("prediction") == "bearish"]
+    lines = ["<b>AI Outlook Updated</b>"]
+    if bullish:
+        lines.append(f"Bullish: {', '.join(bullish)}")
+    if bearish:
+        lines.append(f"Bearish: {', '.join(bearish)}")
+    lines.append(f"\n{len(predictions)} markets analyzed via web search.")
+    send_message("\n".join(lines))
 
     logger.info("=== Auto Outlook Complete ===")
 

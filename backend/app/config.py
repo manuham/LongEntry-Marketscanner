@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # Anthropic API key for AI-powered outlook
     anthropic_api_key: str = ""
 
+    # Telegram alerts (optional)
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
     model_config = {"env_prefix": "LE_", "env_file": ".env"}
 
     def verify_api_key(self, key: str) -> bool:

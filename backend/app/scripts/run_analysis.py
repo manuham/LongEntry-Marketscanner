@@ -15,6 +15,7 @@ import sys
 from app.database import close_pool, get_pool
 from app.engines.analytics import run_full_analysis
 from app.logging_config import setup_logging
+from app.telegram import send_message
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -41,18 +42,42 @@ async def main():
         print(f"  Failed:   {failed}")
         print()
 
+        active = [r for r in results if r.get("is_active")]
+        active.sort(key=lambda r: r.get("rank", 99))
+
         for r in results:
             if "error" in r:
                 print(f"  {r['symbol']}: ERROR - {r['error']}")
             else:
-                print(f"  {r['symbol']}: score={r['technical_score']:.1f}, "
-                      f"win_rate={r['up_day_win_rate']:.1f}%")
+                status = " [ACTIVE]" if r.get("is_active") else ""
+                print(f"  {r['symbol']}: final={r.get('final_score', 0):.1f}{status}")
+
+        # Send Telegram notification
+        lines = [f"<b>Weekly Analysis Complete</b>"]
+        lines.append(f"{analyzed} markets analyzed, {failed} failed\n")
+        if active:
+            lines.append("<b>Active markets this week:</b>")
+            for r in active:
+                lines.append(
+                    f"  #{r.get('rank', '?')} <b>{r['symbol']}</b> — "
+                    f"score {r.get('final_score', 0):.0f} "
+                    f"(T:{r.get('technical_score', 0):.0f} "
+                    f"B:{r.get('backtest_score', 0):.0f} "
+                    f"F:{r.get('fundamental_score', 0):.0f})"
+                )
+        else:
+            lines.append("No markets activated (all below threshold).")
+        if failed > 0:
+            failed_symbols = [r["symbol"] for r in results if "error" in r]
+            lines.append(f"\nFailed: {', '.join(failed_symbols)}")
+        send_message("\n".join(lines))
 
         if failed > 0:
             sys.exit(1)
 
     except Exception:
         logger.exception("Weekly analysis script failed")
+        send_message("Weekly analysis script FAILED — check logs.")
         sys.exit(2)
     finally:
         await close_pool()
