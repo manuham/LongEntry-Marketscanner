@@ -89,7 +89,9 @@ def call_claude(headlines: list[str]) -> dict:
     """Send headlines to Claude API and get macro assessment."""
     import anthropic
 
-    api_key = os.environ.get("LE_ANTHROPIC_API_KEY", "")
+    from app.config import settings
+
+    api_key = settings.anthropic_api_key
     if not api_key:
         logger.error("LE_ANTHROPIC_API_KEY not set — cannot run auto outlook")
         return {}
