@@ -515,10 +515,7 @@ export default function MarketDetail({ markets }) {
     setLoading(true);
     setError(null);
     Promise.all([
-      fetchSymbolAnalytics(symbol).catch((e) => {
-        if (e.message.includes("404")) return null;
-        throw e;
-      }),
+      fetchSymbolAnalytics(symbol).catch(() => null),
       fetchTrades(symbol).catch(() => []),
       fetchFundamental().catch(() => []),
       fetchFundamentalEvents().catch(() => []),
@@ -527,10 +524,10 @@ export default function MarketDetail({ markets }) {
       .then(([analyticsData, tradesData, outlooks, evts, aiData]) => {
         setAnalytics(analyticsData);
         setTrades(tradesData);
-        const match = outlooks.find((o) => o.region === region);
+        const match = (outlooks || []).find((o) => o.region === region);
         if (match) setRegionOutlook(match);
-        setEvents(evts.filter((e) => e.region === region));
-        const aiMatch = aiData.find((p) => p.symbol === symbol);
+        setEvents((evts || []).filter((e) => e.region === region));
+        const aiMatch = (aiData || []).find((p) => p.symbol === symbol);
         if (aiMatch) setAiPrediction(aiMatch);
       })
       .catch((e) => setError(e.message))
