@@ -3,6 +3,7 @@ import { Routes, Route, Link, useLocation } from "react-router-dom";
 import { fetchMarkets, fetchAnalytics, fetchAIPredictions } from "./api";
 import MarketCard from "./MarketCard";
 import MarketDetail from "./MarketDetail";
+import Results from "./Results";
 
 function Overview({ markets, analytics, aiPredictions, loading, error }) {
   return (
@@ -60,9 +61,14 @@ export default function App() {
         <Link to="/" className="hover:opacity-80 transition">
           <h1 className="text-3xl font-bold">LongEntry Market Scanner</h1>
         </Link>
-        {isHome && (
-          <p className="text-gray-400 mt-1">14 Markets &middot; Weekly Overview</p>
-        )}
+        <nav className="flex gap-4 mt-2">
+          <Link to="/" className={`text-sm ${isHome ? "text-white" : "text-gray-500 hover:text-gray-300"} transition`}>
+            Markets
+          </Link>
+          <Link to="/results" className={`text-sm ${location.pathname === "/results" ? "text-white" : "text-gray-500 hover:text-gray-300"} transition`}>
+            Results
+          </Link>
+        </nav>
       </header>
 
       <Routes>
@@ -79,6 +85,7 @@ export default function App() {
           }
         />
         <Route path="/market/:symbol" element={<MarketDetail markets={markets} />} />
+        <Route path="/results" element={<Results />} />
       </Routes>
     </div>
   );

@@ -52,6 +52,10 @@ export function fetchAIPredictions() {
   return apiFetch("/api/fundamental/ai-predictions");
 }
 
+export function fetchResults() {
+  return apiFetch("/api/results");
+}
+
 export function setApiKey(key) {
   localStorage.setItem("le_api_key", key);
   window.location.reload();
