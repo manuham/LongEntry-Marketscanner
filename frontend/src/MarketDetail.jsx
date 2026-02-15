@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { createChart } from "lightweight-charts";
+import { createChart, CandlestickSeries, AreaSeries } from "lightweight-charts";
 import { fetchSymbolAnalytics, fetchCandles, fetchTrades, overrideMarket, fetchFundamental, fetchFundamentalEvents, fetchAIPredictions } from "./api";
 
 const SYMBOL_REGION = {
@@ -110,7 +110,7 @@ function TradeChart({ symbol, trades, onChartReady }) {
 
     chartRef.current = chart;
 
-    const candleSeries = chart.addCandlestickSeries({
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#22C55E",
       downColor: "#EF4444",
       borderDownColor: "#EF4444",
@@ -219,7 +219,7 @@ function EquityCurve({ trades }) {
       },
     });
 
-    const lineSeries = chart.addAreaSeries({
+    const lineSeries = chart.addSeries(AreaSeries, {
       topColor: "rgba(34, 197, 94, 0.3)",
       bottomColor: "rgba(34, 197, 94, 0.02)",
       lineColor: "#22C55E",
