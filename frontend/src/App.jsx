@@ -1,6 +1,6 @@
 import { Component, useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
-import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive, overrideMarket } from "./api";
+import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive, overrideMarket, setApiKey } from "./api";
 import { useTheme } from "./ThemeContext";
 import MarketCard from "./MarketCard";
 import MarketDetail from "./MarketDetail";
@@ -202,6 +202,55 @@ function ThemeToggle() {
         </svg>
       )}
     </button>
+  );
+}
+
+// ─── Settings Panel ──────────────────────────────────────────────────────────
+
+function SettingsPanel() {
+  const [open, setOpen] = useState(false);
+  const [key, setKey] = useState("");
+  const currentKey = localStorage.getItem("le_api_key") || "";
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="p-1.5 rounded-lg hover:bg-th-surface transition-colors text-th-muted hover:text-th-heading"
+        title="Settings"
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <path d="M7.5 2.25h3l.375 1.875 1.125.375 1.5-1.125 2.125 2.125-1.125 1.5.375 1.125L17.75 8.5v3l-1.875.375-.375 1.125 1.125 1.5-2.125 2.125-1.5-1.125-1.125.375L11.5 17.75h-3l-.375-1.875-1.125-.375-1.5 1.125L3.375 14.5l1.125-1.5-.375-1.125L2.25 11.5v-3l1.875-.375.375-1.125L3.375 5.5 5.5 3.375 7 4.5l1.125-.375L7.5 2.25Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-10 bg-th-card border border-th rounded-xl shadow-xl z-50 w-72 p-4">
+          <h4 className="text-sm font-semibold text-th-heading mb-3">Settings</h4>
+          <label className="text-xs text-th-muted block mb-1">API Key</label>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              placeholder={currentKey ? "Key is set" : "Enter API key"}
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              className="flex-1 text-sm px-2 py-1.5 rounded-md bg-th-surface border border-th text-th-heading placeholder:text-th-faint focus:outline-none focus:border-blue-500"
+            />
+            <button
+              onClick={() => { if (key.trim()) setApiKey(key.trim()); }}
+              disabled={!key.trim()}
+              className="text-xs px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Save
+            </button>
+          </div>
+          {currentKey && (
+            <p className="text-[10px] text-emerald-400 mt-1">Key is configured</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -452,6 +501,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <NotificationPanel health={health} drawdown={drawdown} />
+            <SettingsPanel />
             <ThemeToggle />
           </div>
         </div>
