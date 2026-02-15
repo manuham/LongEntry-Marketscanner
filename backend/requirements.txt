@@ -6,3 +6,5 @@ pydantic-settings==2.7.1
 python-json-logger==3.2.1
 pandas==2.2.3
 numpy==2.2.1
+anthropic>=0.40.0
+feedparser>=6.0.0
