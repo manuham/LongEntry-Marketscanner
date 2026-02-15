@@ -48,6 +48,10 @@ export function fetchFundamentalEvents() {
   return apiFetch("/api/fundamental/events");
 }
 
+export function fetchAIPredictions() {
+  return apiFetch("/api/fundamental/ai-predictions");
+}
+
 export function setApiKey(key) {
   localStorage.setItem("le_api_key", key);
   window.location.reload();

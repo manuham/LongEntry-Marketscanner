@@ -36,3 +36,11 @@ class CreateEvent(BaseModel):
     title: str
     impact: str = Field("medium", pattern="^(high|medium|low)$")
     description: str | None = None
+
+
+class MarketAIPrediction(BaseModel):
+    symbol: str
+    prediction: str  # bullish, neutral, bearish
+    score: float
+    reasoning: str | None = None
+    updated_at: str | None = None

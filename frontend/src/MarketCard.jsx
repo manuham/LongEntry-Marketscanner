@@ -22,10 +22,17 @@ function fmt(val, decimals = 2) {
   return val.toFixed(decimals);
 }
 
-export default function MarketCard({ market, analytics }) {
+const PREDICTION_STYLE = {
+  bullish: { label: "Bullish", bg: "bg-green-900/50", text: "text-green-400" },
+  bearish: { label: "Bearish", bg: "bg-red-900/50", text: "text-red-400" },
+  neutral: { label: "Neutral", bg: "bg-gray-800", text: "text-gray-400" },
+};
+
+export default function MarketCard({ market, analytics, aiPrediction }) {
   const borderColor = CATEGORY_COLORS[market.category] || "border-gray-600";
   const a = analytics;
   const displayScore = a?.final_score ?? a?.technical_score;
+  const pred = aiPrediction ? PREDICTION_STYLE[aiPrediction.prediction] || PREDICTION_STYLE.neutral : null;
 
   return (
     <Link
@@ -75,6 +82,20 @@ export default function MarketCard({ market, analytics }) {
         <p className="text-xs text-gray-500 mt-1">
           {new Date(market.latest_time).toLocaleString()}
         </p>
+      )}
+
+      {/* AI Prediction */}
+      {pred && (
+        <div className="mt-2">
+          <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${pred.bg} ${pred.text}`}>
+            {pred.label}
+          </span>
+          {aiPrediction.reasoning && (
+            <p className="text-[11px] text-gray-500 mt-1 line-clamp-2 leading-tight">
+              {aiPrediction.reasoning}
+            </p>
+          )}
+        </div>
       )}
 
       {/* Analytics section */}

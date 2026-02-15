@@ -8,6 +8,7 @@ from app.engines.fundamental import SYMBOL_REGION
 from app.schemas.fundamental import (
     CreateEvent,
     EconomicEvent,
+    MarketAIPrediction,
     RegionOutlook,
     UpdateOutlook,
 )
@@ -96,6 +97,32 @@ async def update_outlook(
         notes=row["notes"],
         updated_at=str(row["updated_at"]) if row["updated_at"] else None,
     )
+
+
+# ── AI predictions ────────────────────────────────────────────────
+
+@router.get("/fundamental/ai-predictions", response_model=list[MarketAIPrediction])
+async def list_ai_predictions():
+    """Return the latest AI predictions for all markets (from auto_outlook.py)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT symbol, prediction, score, reasoning, updated_at
+            FROM market_ai_prediction
+            ORDER BY score DESC
+            """
+        )
+    return [
+        MarketAIPrediction(
+            symbol=r["symbol"],
+            prediction=r["prediction"],
+            score=r["score"],
+            reasoning=r["reasoning"],
+            updated_at=str(r["updated_at"]) if r["updated_at"] else None,
+        )
+        for r in rows
+    ]
 
 
 # ── Economic events ───────────────────────────────────────────────
