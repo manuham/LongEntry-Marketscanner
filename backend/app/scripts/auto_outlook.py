@@ -1,95 +1,92 @@
 """
-Auto-Outlook: AI-powered fundamental analysis
+Auto-Outlook: AI-powered per-market fundamental analysis
 
-Fetches financial news from free RSS feeds, sends headlines to the Claude API,
-and updates the fundamental_outlook table with AI-assessed macro scores.
+Uses Claude with web search to research each of the 14 markets, then predicts
+bullish/neutral/bearish with a 0-100 score. This replaces the generic RSS-based
+regional approach — Claude actually searches the web for current data, just like
+you would ask it in a chat.
 
 Runs before the weekly analysis cron job every Saturday.
-Cost: ~$0.01 per run.
+Cost: ~$0.05-0.10 per run (web search + tokens).
 """
 
 import asyncio
 import json
 import logging
-import os
+import re
 import sys
+import os
 
-import feedparser
-
-# Add parent to path so we can import app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.config import settings
 from app.database import get_pool, close_pool
 from app.logging_config import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# Free RSS feeds for financial news (no API key needed)
-RSS_FEEDS = [
-    "https://feeds.content.dowjones.io/public/rss/mw_topstories",           # MarketWatch
-    "https://feeds.content.dowjones.io/public/rss/mw_marketpulse",          # MarketWatch Pulse
-    "https://www.cnbc.com/id/100003114/device/rss/rss.html",                # CNBC Economy
-    "https://www.cnbc.com/id/10001147/device/rss/rss.html",                 # CNBC Finance
-    "https://www.rss.app/feeds/v1.1/tJXEqFjPmDPilKhd.xml",                 # Reuters Business
-]
-
-REGIONS = ["US", "EU", "UK", "JP", "AU", "HK", "commodities"]
-
-PROMPT = """You are a macro-economic analyst. Based on the financial news headlines below, assess the current macro environment for each of these 7 regions: US, EU, UK, JP, AU, HK, commodities (gold/silver).
-
-For each region, provide:
-- cb_stance: -1 (hawkish/hiking rates), 0 (neutral/on hold), 1 (dovish/cutting rates)
-- growth_outlook: -1 (contracting/recession), 0 (stable), 1 (expanding/strong growth)
-- inflation_trend: -1 (falling), 0 (stable), 1 (rising)
-- risk_sentiment: -1 (risk-off/fear), 0 (neutral), 1 (risk-on/greed)
-- notes: 1-sentence summary of the outlook
-
-If headlines don't clearly indicate a direction for a region, use 0 (neutral).
-For commodities: assess what the environment means for gold/silver specifically.
-
-Respond with ONLY valid JSON in this exact format (no markdown, no explanation):
-{
-  "US": {"cb_stance": 0, "growth_outlook": 0, "inflation_trend": 0, "risk_sentiment": 0, "notes": "..."},
-  "EU": {"cb_stance": 0, "growth_outlook": 0, "inflation_trend": 0, "risk_sentiment": 0, "notes": "..."},
-  "UK": {"cb_stance": 0, "growth_outlook": 0, "inflation_trend": 0, "risk_sentiment": 0, "notes": "..."},
-  "JP": {"cb_stance": 0, "growth_outlook": 0, "inflation_trend": 0, "risk_sentiment": 0, "notes": "..."},
-  "AU": {"cb_stance": 0, "growth_outlook": 0, "inflation_trend": 0, "risk_sentiment": 0, "notes": "..."},
-  "HK": {"cb_stance": 0, "growth_outlook": 0, "inflation_trend": 0, "risk_sentiment": 0, "notes": "..."},
-  "commodities": {"cb_stance": 0, "growth_outlook": 0, "inflation_trend": 0, "risk_sentiment": 0, "notes": "..."}
+# All 14 markets the system trades
+MARKETS = {
+    "XAUUSD": "Gold",
+    "XAGUSD": "Silver",
+    "US500":  "S&P 500",
+    "US100":  "Nasdaq 100",
+    "US30":   "Dow Jones 30",
+    "GER40":  "DAX 40 (Germany)",
+    "AUS200": "ASX 200 (Australia)",
+    "UK100":  "FTSE 100 (UK)",
+    "JP225":  "Nikkei 225 (Japan)",
+    "SPN35":  "IBEX 35 (Spain)",
+    "EU50":   "Euro Stoxx 50",
+    "FRA40":  "CAC 40 (France)",
+    "HK50":   "Hang Seng 50 (Hong Kong)",
+    "N25":    "AEX 25 (Netherlands)",
 }
 
-NEWS HEADLINES:
+PROMPT = """You are a professional macro-economic analyst helping a trader decide which stock indices and commodities are likely to move up next week.
+
+Use the web_search tool to research the CURRENT macro environment. Search for:
+1. Central bank rate decisions and forward guidance (Fed, ECB, BoE, BoJ, RBA, HKMA)
+2. Recent economic data releases (GDP, employment, CPI/inflation, PMI)
+3. Current market sentiment and risk appetite
+4. Any geopolitical events affecting markets
+5. Gold/silver specific drivers (dollar strength, real yields, safe haven demand)
+
+After your research, assess each of the following 14 markets for the COMING WEEK.
+For each, give:
+- "prediction": "bullish", "neutral", or "bearish"
+- "score": a number 0-100 where 0=extremely bearish, 50=neutral, 100=extremely bullish
+- "reasoning": 1-2 sentence explanation
+
+Markets to assess:
+- XAUUSD (Gold)
+- XAGUSD (Silver)
+- US500 (S&P 500)
+- US100 (Nasdaq 100)
+- US30 (Dow Jones 30)
+- GER40 (DAX 40, Germany)
+- AUS200 (ASX 200, Australia)
+- UK100 (FTSE 100, UK)
+- JP225 (Nikkei 225, Japan)
+- SPN35 (IBEX 35, Spain)
+- EU50 (Euro Stoxx 50)
+- FRA40 (CAC 40, France)
+- HK50 (Hang Seng 50, Hong Kong)
+- N25 (AEX 25, Netherlands)
+
+Respond with ONLY valid JSON (no markdown fences, no explanation outside the JSON):
+{
+  "XAUUSD": {"prediction": "bullish", "score": 65, "reasoning": "..."},
+  "XAGUSD": {"prediction": "neutral", "score": 50, "reasoning": "..."},
+  ...all 14 markets...
+}
 """
 
 
-def fetch_headlines() -> list[str]:
-    """Fetch recent headlines from financial RSS feeds."""
-    headlines = []
-    for url in RSS_FEEDS:
-        try:
-            feed = feedparser.parse(url)
-            for entry in feed.entries[:15]:  # Top 15 per feed
-                title = entry.get("title", "").strip()
-                if title:
-                    headlines.append(title)
-        except Exception:
-            logger.warning("Failed to fetch RSS feed: %s", url)
-    # Deduplicate and limit
-    seen = set()
-    unique = []
-    for h in headlines:
-        if h not in seen:
-            seen.add(h)
-            unique.append(h)
-    return unique[:80]  # Max 80 headlines to keep token usage low
-
-
-def call_claude(headlines: list[str]) -> dict:
-    """Send headlines to Claude API and get macro assessment."""
+def call_claude() -> dict:
+    """Ask Claude to research all markets using web search and return predictions."""
     import anthropic
-
-    from app.config import settings
 
     api_key = settings.anthropic_api_key
     if not api_key:
@@ -98,87 +95,97 @@ def call_claude(headlines: list[str]) -> dict:
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    headline_text = "\n".join(f"- {h}" for h in headlines)
-    user_message = PROMPT + headline_text
-
     response = client.messages.create(
         model="claude-sonnet-4-5-20250929",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": user_message}],
+        max_tokens=4096,
+        tools=[
+            {
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "max_uses": 10,
+            }
+        ],
+        messages=[{"role": "user", "content": PROMPT}],
     )
 
-    text = response.content[0].text.strip()
+    # Extract the final text block from the response
+    text = ""
+    for block in response.content:
+        if block.type == "text":
+            text = block.text.strip()
+
+    if not text:
+        logger.error("No text response from Claude")
+        return {}
+
     # Strip markdown code fences if present
-    import re
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
+
     return json.loads(text)
 
 
-async def update_outlooks(assessments: dict) -> None:
-    """Write AI assessments to the fundamental_outlook table."""
+async def store_predictions(predictions: dict) -> None:
+    """Write per-market AI predictions to the database."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        for region, data in assessments.items():
-            if region not in REGIONS:
+        for symbol, data in predictions.items():
+            if symbol not in MARKETS:
                 continue
+            pred = data.get("prediction", "neutral")
+            score = float(data.get("score", 50))
+            reasoning = data.get("reasoning", "")
+
+            # Clamp score to 0-100
+            score = max(0.0, min(100.0, score))
+
             await conn.execute(
                 """
-                UPDATE fundamental_outlook
-                SET cb_stance = $2,
-                    growth_outlook = $3,
-                    inflation_trend = $4,
-                    risk_sentiment = $5,
-                    notes = $6,
+                INSERT INTO market_ai_prediction (symbol, prediction, score, reasoning, updated_at)
+                VALUES ($1, $2, $3, $4, NOW())
+                ON CONFLICT (symbol)
+                DO UPDATE SET
+                    prediction = EXCLUDED.prediction,
+                    score = EXCLUDED.score,
+                    reasoning = EXCLUDED.reasoning,
                     updated_at = NOW()
-                WHERE region = $1
                 """,
-                region,
-                data.get("cb_stance", 0),
-                data.get("growth_outlook", 0),
-                data.get("inflation_trend", 0),
-                data.get("risk_sentiment", 0),
-                data.get("notes", ""),
+                symbol,
+                pred,
+                score,
+                reasoning,
             )
             logger.info(
-                "Updated %s: cb=%d growth=%d infl=%d risk=%d — %s",
-                region,
-                data.get("cb_stance", 0),
-                data.get("growth_outlook", 0),
-                data.get("inflation_trend", 0),
-                data.get("risk_sentiment", 0),
-                data.get("notes", ""),
+                "  %s %-7s: %s (score=%.0f) — %s",
+                symbol,
+                f"({MARKETS[symbol]})",
+                pred.upper(),
+                score,
+                reasoning[:80],
             )
 
 
 async def main():
-    logger.info("=== Auto Outlook Started ===")
+    logger.info("=== Auto Outlook Started (AI Web Search) ===")
 
-    # Step 1: Fetch headlines
-    headlines = fetch_headlines()
-    if not headlines:
-        logger.warning("No headlines fetched — skipping outlook update")
-        return
-    logger.info("Fetched %d headlines from RSS feeds", len(headlines))
-
-    # Step 2: Ask Claude to assess
+    # Ask Claude to research and predict
     try:
-        assessments = call_claude(headlines)
+        predictions = call_claude()
     except Exception:
         logger.exception("Claude API call failed")
         return
 
-    if not assessments:
-        logger.warning("Empty assessment — skipping update")
+    if not predictions:
+        logger.warning("Empty predictions — skipping update")
         return
 
-    logger.info("Got assessments for %d regions", len(assessments))
+    logger.info("Got predictions for %d markets:", len(predictions))
 
-    # Step 3: Update database
+    # Store to database
     try:
-        await update_outlooks(assessments)
+        await store_predictions(predictions)
     except Exception:
-        logger.exception("Failed to update outlooks in database")
+        logger.exception("Failed to store predictions in database")
     finally:
         await close_pool()
 
