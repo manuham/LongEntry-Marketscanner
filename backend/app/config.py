@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     max_active_markets: int = 6
     min_final_score: float = 40.0
 
+    # Anthropic API key for AI-powered outlook
+    anthropic_api_key: str = ""
+
     model_config = {"env_prefix": "LE_", "env_file": ".env"}
 
     def verify_api_key(self, key: str) -> bool:
