@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
-    model_config = {"env_prefix": "LE_", "env_file": ".env"}
+    model_config = {"env_prefix": "LE_", "env_file": ".env", "frozen": False}
 
     def verify_api_key(self, key: str) -> bool:
         if not self.api_key_hash:

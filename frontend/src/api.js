@@ -1,8 +1,10 @@
-const API_KEY = localStorage.getItem("le_api_key") || "";
+function getApiKey() {
+  return localStorage.getItem("le_api_key") || "";
+}
 
 async function apiFetch(path) {
   const res = await fetch(path, {
-    headers: { "X-API-Key": API_KEY },
+    headers: { "X-API-Key": getApiKey() },
   });
   if (!res.ok) {
     throw new Error(`API error ${res.status}: ${res.statusText}`);
@@ -30,7 +32,7 @@ export function overrideMarket(symbol, active) {
   return fetch(`/api/override/${symbol}`, {
     method: "POST",
     headers: {
-      "X-API-Key": API_KEY,
+      "X-API-Key": getApiKey(),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ active }),
@@ -92,11 +94,10 @@ export function fetchMaxActive() {
 }
 
 export function updateMaxActive(maxActive) {
-  const API_KEY = localStorage.getItem("le_api_key") || "";
   return fetch("/api/config/max-active-markets", {
     method: "PUT",
     headers: {
-      "X-API-Key": API_KEY,
+      "X-API-Key": getApiKey(),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ max_active: maxActive }),

@@ -1,6 +1,6 @@
 import { Component, useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
-import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive } from "./api";
+import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive, overrideMarket } from "./api";
 import { useTheme } from "./ThemeContext";
 import MarketCard from "./MarketCard";
 import MarketDetail from "./MarketDetail";
@@ -283,6 +283,7 @@ function ViewToggle({ mode, onToggle }) {
 function ActiveMarketsInput({ maxActive, onUpdate }) {
   const [value, setValue] = useState(maxActive);
   const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState(null);
 
   useEffect(() => { setValue(maxActive); }, [maxActive]);
 
@@ -290,9 +291,10 @@ function ActiveMarketsInput({ maxActive, onUpdate }) {
     const clamped = Math.max(1, Math.min(14, newVal));
     setValue(clamped);
     setSaving(true);
+    setErr(null);
     updateMaxActive(clamped)
       .then((res) => onUpdate(res.max_active))
-      .catch(() => setValue(maxActive))
+      .catch((e) => { setValue(maxActive); setErr(e.message); })
       .finally(() => setSaving(false));
   };
 
@@ -318,11 +320,12 @@ function ActiveMarketsInput({ maxActive, onUpdate }) {
       </div>
       <span className="text-sm text-th-secondary">markets</span>
       {saving && <span className="text-xs text-th-faint animate-pulse">saving...</span>}
+      {err && <span className="text-xs text-rose-400">{err}</span>}
     </div>
   );
 }
 
-function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, onMaxActiveUpdate, loading, error }) {
+function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, onMaxActiveUpdate, onToggleActive, loading, error }) {
   const [viewMode, setViewMode] = useState("grid");
 
   // Sort markets: ranked markets first (by rank ascending), unranked at bottom
@@ -355,13 +358,14 @@ function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, onMa
       {viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {sorted.map((m) => (
-            <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} viewMode="grid" />
+            <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} onToggleActive={onToggleActive} viewMode="grid" />
           ))}
         </div>
       ) : (
         <div className="bg-th-card border border-th rounded-xl overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[1fr_100px_80px_80px_80px_60px_80px] gap-2 px-4 py-2 text-[10px] text-th-faint uppercase tracking-wide border-b border-th font-medium">
+          <div className="grid grid-cols-[40px_1fr_100px_80px_80px_80px_60px_80px] gap-2 px-4 py-2 text-[10px] text-th-faint uppercase tracking-wide border-b border-th font-medium">
+            <span></span>
             <span>Symbol</span>
             <span className="text-right">Price</span>
             <span className="text-right">Score</span>
@@ -371,7 +375,7 @@ function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, onMa
             <span className="text-right">Rank</span>
           </div>
           {sorted.map((m) => (
-            <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} viewMode="table" />
+            <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} onToggleActive={onToggleActive} viewMode="table" />
           ))}
         </div>
       )}
@@ -393,11 +397,15 @@ export default function App() {
   const location = useLocation();
 
   const refreshAnalytics = () => {
-    fetchAnalytics().then((analyticsData) => {
+    return fetchAnalytics().then((analyticsData) => {
       const bySymbol = {};
       for (const a of analyticsData) bySymbol[a.symbol] = a;
       setAnalytics(bySymbol);
     }).catch(() => {});
+  };
+
+  const handleToggleActive = (symbol, active) => {
+    return overrideMarket(symbol, active).then(() => refreshAnalytics());
   };
 
   useEffect(() => {
@@ -476,6 +484,7 @@ export default function App() {
                 drawdown={drawdown}
                 maxActive={maxActive}
                 onMaxActiveUpdate={(val) => { setMaxActive(val); refreshAnalytics(); }}
+                onToggleActive={handleToggleActive}
                 loading={loading}
                 error={error}
               />

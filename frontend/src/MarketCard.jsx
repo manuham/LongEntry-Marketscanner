@@ -31,15 +31,26 @@ const PREDICTION_STYLE = {
 
 // ─── Grid Card (default view) ──────────────────────────────────────────────────
 
-export default function MarketCard({ market, analytics, aiPrediction, viewMode = "grid" }) {
+export default function MarketCard({ market, analytics, aiPrediction, onToggleActive, viewMode = "grid" }) {
   const [expanded, setExpanded] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const borderColor = CATEGORY_COLORS[market.category] || "border-gray-600";
   const a = analytics;
   const displayScore = a?.final_score ?? a?.technical_score;
   const pred = aiPrediction ? PREDICTION_STYLE[aiPrediction.prediction] || PREDICTION_STYLE.neutral : null;
 
+  const handleToggle = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!onToggleActive || toggling) return;
+    setToggling(true);
+    onToggleActive(market.symbol, !a?.is_active)
+      .catch(() => {})
+      .finally(() => setToggling(false));
+  };
+
   if (viewMode === "table") {
-    return <MarketRow market={market} analytics={a} aiPrediction={aiPrediction} />;
+    return <MarketRow market={market} analytics={a} aiPrediction={aiPrediction} onToggle={handleToggle} toggling={toggling} />;
   }
 
   return (
@@ -49,10 +60,21 @@ export default function MarketCard({ market, analytics, aiPrediction, viewMode =
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-2">
             <h3 className="text-lg font-semibold text-th-heading">{market.symbol}</h3>
-            {a?.is_active && (
-              <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-green-900/60 text-green-400">
-                Active
-              </span>
+            {a && (
+              <button
+                onClick={handleToggle}
+                disabled={toggling}
+                className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded transition-colors ${
+                  toggling
+                    ? "bg-th-surface text-th-faint animate-pulse"
+                    : a.is_active
+                      ? "bg-green-900/60 text-green-400 hover:bg-red-900/40 hover:text-red-400"
+                      : "bg-th-surface text-th-faint hover:bg-green-900/40 hover:text-green-400"
+                }`}
+                title={a.is_active ? "Click to deactivate" : "Click to activate"}
+              >
+                {toggling ? "..." : a.is_active ? "Active" : "Off"}
+              </button>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -199,7 +221,7 @@ export default function MarketCard({ market, analytics, aiPrediction, viewMode =
 
 // ─── Table Row (for list/table view) ───────────────────────────────────────────
 
-function MarketRow({ market, analytics, aiPrediction }) {
+function MarketRow({ market, analytics, aiPrediction, onToggle, toggling }) {
   const a = analytics;
   const displayScore = a?.final_score ?? a?.technical_score;
   const pred = aiPrediction ? PREDICTION_STYLE[aiPrediction.prediction] || PREDICTION_STYLE.neutral : null;
@@ -207,17 +229,34 @@ function MarketRow({ market, analytics, aiPrediction }) {
   return (
     <Link
       to={`/market/${market.symbol}`}
-      className="grid grid-cols-[1fr_100px_80px_80px_80px_60px_80px] gap-2 items-center px-4 py-3 bg-th-card hover:bg-th-card-hover border-b border-th transition-colors"
+      className="grid grid-cols-[40px_1fr_100px_80px_80px_80px_60px_80px] gap-2 items-center px-4 py-3 bg-th-card hover:bg-th-card-hover border-b border-th transition-colors"
     >
+      {/* Toggle */}
+      <span className="flex justify-center">
+        {a ? (
+          <button
+            onClick={onToggle}
+            disabled={toggling}
+            className={`text-[9px] uppercase font-bold px-1 py-0.5 rounded transition-colors flex-shrink-0 ${
+              toggling
+                ? "bg-th-surface text-th-faint animate-pulse"
+                : a.is_active
+                  ? "bg-green-900/60 text-green-400 hover:bg-red-900/40 hover:text-red-400"
+                  : "bg-th-surface text-th-faint hover:bg-green-900/40 hover:text-green-400"
+            }`}
+            title={a.is_active ? "Click to deactivate" : "Click to activate"}
+          >
+            {toggling ? "..." : a.is_active ? "On" : "Off"}
+          </button>
+        ) : (
+          <span className="text-[9px] text-th-faint">—</span>
+        )}
+      </span>
+
       {/* Symbol + name */}
       <div className="flex items-center gap-2 min-w-0">
         <span className="font-semibold text-th-heading truncate">{market.symbol}</span>
         <span className="text-xs text-th-faint truncate hidden sm:inline">{market.name}</span>
-        {a?.is_active && (
-          <span className="text-[9px] uppercase font-bold px-1 py-0.5 rounded bg-green-900/60 text-green-400 flex-shrink-0">
-            Active
-          </span>
-        )}
       </div>
 
       {/* Price */}
