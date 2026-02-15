@@ -113,11 +113,44 @@ def compute_fundamental_score(
     return max(0.0, min(100.0, round(score, 1)))
 
 
+async def fetch_ai_prediction(symbol: str) -> dict | None:
+    """Fetch the latest AI prediction for a market (from auto_outlook.py)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT score, prediction, reasoning, updated_at
+            FROM market_ai_prediction
+            WHERE symbol = $1
+              AND updated_at > NOW() - INTERVAL '7 days'
+            """,
+            symbol,
+        )
+    if not row:
+        return None
+    return dict(row)
+
+
 async def score_symbol(symbol: str, week_start: date) -> float:
     """
     Compute the FundamentalScore for a single symbol.
-    Returns 50.0 (neutral) if region data is missing.
+
+    Priority:
+      1. AI per-market prediction (from auto_outlook.py web search) — if recent
+      2. Region-based macro scoring — fallback
+      3. 50.0 (neutral) — if no data at all
     """
+    # Try AI prediction first
+    ai = await fetch_ai_prediction(symbol)
+    if ai is not None:
+        score = max(0.0, min(100.0, float(ai["score"])))
+        logger.info(
+            "Fundamental score for %s: %.1f (AI: %s — %s)",
+            symbol, score, ai["prediction"], (ai.get("reasoning") or "")[:60],
+        )
+        return score
+
+    # Fallback to region-based scoring
     region = SYMBOL_REGION.get(symbol)
     if not region:
         logger.warning("No region mapping for %s, using neutral score", symbol)
@@ -133,7 +166,7 @@ async def score_symbol(symbol: str, week_start: date) -> float:
 
     score = compute_fundamental_score(outlook, events, is_commodity)
     logger.info(
-        "Fundamental score for %s (region=%s): %.1f (events=%d)",
+        "Fundamental score for %s (region=%s, fallback): %.1f (events=%d)",
         symbol, region, score, events,
     )
     return score
