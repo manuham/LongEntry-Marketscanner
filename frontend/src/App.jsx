@@ -1,6 +1,6 @@
 import { Component, useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
-import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown } from "./api";
+import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive } from "./api";
 import { useTheme } from "./ThemeContext";
 import MarketCard from "./MarketCard";
 import MarketDetail from "./MarketDetail";
@@ -280,8 +280,60 @@ function ViewToggle({ mode, onToggle }) {
 
 // ─── Overview ────────────────────────────────────────────────────────────────
 
-function Overview({ markets, analytics, aiPredictions, drawdown, loading, error }) {
+function ActiveMarketsInput({ maxActive, onUpdate }) {
+  const [value, setValue] = useState(maxActive);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setValue(maxActive); }, [maxActive]);
+
+  const handleChange = (newVal) => {
+    const clamped = Math.max(1, Math.min(14, newVal));
+    setValue(clamped);
+    setSaving(true);
+    updateMaxActive(clamped)
+      .then((res) => onUpdate(res.max_active))
+      .catch(() => setValue(maxActive))
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-th-secondary">Activate top</span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => handleChange(value - 1)}
+          disabled={value <= 1 || saving}
+          className="w-7 h-7 rounded-md bg-th-surface text-th-heading hover:bg-th-card-hover disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-sm font-bold transition-colors"
+        >
+          -
+        </button>
+        <span className="w-8 text-center font-mono text-lg font-bold text-th-heading">{value}</span>
+        <button
+          onClick={() => handleChange(value + 1)}
+          disabled={value >= 14 || saving}
+          className="w-7 h-7 rounded-md bg-th-surface text-th-heading hover:bg-th-card-hover disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-sm font-bold transition-colors"
+        >
+          +
+        </button>
+      </div>
+      <span className="text-sm text-th-secondary">markets</span>
+      {saving && <span className="text-xs text-th-faint animate-pulse">saving...</span>}
+    </div>
+  );
+}
+
+function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, onMaxActiveUpdate, loading, error }) {
   const [viewMode, setViewMode] = useState("grid");
+
+  // Sort markets: ranked markets first (by rank ascending), unranked at bottom
+  const sorted = [...markets].sort((a, b) => {
+    const ra = analytics[a.symbol]?.rank;
+    const rb = analytics[b.symbol]?.rank;
+    if (ra != null && rb != null) return ra - rb;
+    if (ra != null) return -1;
+    if (rb != null) return 1;
+    return 0;
+  });
 
   return (
     <>
@@ -292,14 +344,17 @@ function Overview({ markets, analytics, aiPredictions, drawdown, loading, error 
 
       <DrawdownSidebar drawdown={drawdown} />
 
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-th-heading">{markets.length} Markets</h2>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div className="flex items-center gap-6 flex-wrap">
+          <h2 className="text-lg font-semibold text-th-heading">{markets.length} Markets</h2>
+          <ActiveMarketsInput maxActive={maxActive} onUpdate={onMaxActiveUpdate} />
+        </div>
         <ViewToggle mode={viewMode} onToggle={setViewMode} />
       </div>
 
       {viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {markets.map((m) => (
+          {sorted.map((m) => (
             <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} viewMode="grid" />
           ))}
         </div>
@@ -315,7 +370,7 @@ function Overview({ markets, analytics, aiPredictions, drawdown, loading, error 
             <span className="text-center">AI</span>
             <span className="text-right">Rank</span>
           </div>
-          {markets.map((m) => (
+          {sorted.map((m) => (
             <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} viewMode="table" />
           ))}
         </div>
@@ -332,9 +387,18 @@ export default function App() {
   const [aiPredictions, setAiPredictions] = useState({});
   const [health, setHealth] = useState(null);
   const [drawdown, setDrawdown] = useState([]);
+  const [maxActive, setMaxActive] = useState(6);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
+
+  const refreshAnalytics = () => {
+    fetchAnalytics().then((analyticsData) => {
+      const bySymbol = {};
+      for (const a of analyticsData) bySymbol[a.symbol] = a;
+      setAnalytics(bySymbol);
+    }).catch(() => {});
+  };
 
   useEffect(() => {
     Promise.all([
@@ -359,6 +423,7 @@ export default function App() {
       .finally(() => setLoading(false));
     fetchHealth().then(setHealth).catch(() => {});
     fetchDrawdown().then(setDrawdown).catch(() => {});
+    fetchMaxActive().then((res) => setMaxActive(res.max_active)).catch(() => {});
   }, []);
 
   const NAV_ITEMS = [
@@ -409,6 +474,8 @@ export default function App() {
                 analytics={analytics}
                 aiPredictions={aiPredictions}
                 drawdown={drawdown}
+                maxActive={maxActive}
+                onMaxActiveUpdate={(val) => { setMaxActive(val); refreshAnalytics(); }}
                 loading={loading}
                 error={error}
               />
