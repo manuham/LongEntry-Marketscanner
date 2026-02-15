@@ -84,6 +84,28 @@ Respond with ONLY valid JSON (no markdown fences, no explanation outside the JSO
 """
 
 
+def extract_json(text: str) -> dict:
+    """Find and parse the JSON object from Claude's response text."""
+    # Strip markdown code fences if present
+    text = re.sub(r"```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```", "", text)
+
+    # Find the outermost JSON object { ... }
+    start = text.find("{")
+    if start == -1:
+        return {}
+
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[start : i + 1])
+    return {}
+
+
 def call_claude() -> dict:
     """Ask Claude to research all markets using web search and return predictions."""
     import anthropic
@@ -108,21 +130,35 @@ def call_claude() -> dict:
         messages=[{"role": "user", "content": PROMPT}],
     )
 
-    # Extract the final text block from the response
-    text = ""
-    for block in response.content:
-        if block.type == "text":
-            text = block.text.strip()
+    # Log block types for debugging
+    block_types = [block.type for block in response.content]
+    logger.info("Response block types: %s", block_types)
 
-    if not text:
-        logger.error("No text response from Claude")
+    # Collect ALL text from text blocks (response has interleaved search + text blocks)
+    text_parts = []
+    for block in response.content:
+        if block.type == "text" and block.text.strip():
+            text_parts.append(block.text.strip())
+
+    if not text_parts:
+        logger.error("No text blocks in Claude response")
         return {}
 
-    # Strip markdown code fences if present
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
+    # The JSON is usually in the last text block
+    # Try last block first, then fall back to searching all blocks
+    for text in reversed(text_parts):
+        result = extract_json(text)
+        if result:
+            return result
 
-    return json.loads(text)
+    # Last resort: concatenate all text and search
+    combined = "\n".join(text_parts)
+    result = extract_json(combined)
+    if result:
+        return result
+
+    logger.error("Could not find JSON in response. Text blocks: %s", text_parts[:2])
+    return {}
 
 
 async def store_predictions(predictions: dict) -> None:
