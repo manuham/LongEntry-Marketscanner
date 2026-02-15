@@ -68,3 +68,21 @@ export function setApiKey(key) {
   localStorage.setItem("le_api_key", key);
   window.location.reload();
 }
+
+// ─── New endpoints for history, heatmap, drawdown ───
+
+export function fetchSymbolHistory(symbol, weeks = 52) {
+  return apiFetch(`/api/analytics/history/${symbol}?weeks=${weeks}`);
+}
+
+export function fetchAllHistory(weeks = 12) {
+  return apiFetch(`/api/analytics/history?weeks=${weeks}`);
+}
+
+export function fetchHeatmap(symbol) {
+  return apiFetch(`/api/backtest/heatmap/${symbol}`);
+}
+
+export function fetchDrawdown() {
+  return apiFetch("/api/trades/drawdown");
+}

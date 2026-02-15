@@ -1,3 +1,61 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─── Theme tokens ─── */
+:root {
+  color-scheme: dark;
+  --bg-base: #030712;
+  --bg-card: #0c1322;
+  --bg-card-hover: #111827;
+  --bg-surface: #1e293b;
+  --bg-surface-alt: #1e293b80;
+  --text-heading: #f1f5f9;
+  --text-body: #cbd5e1;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-faint: #475569;
+  --border: rgba(30, 41, 59, 0.6);
+  --border-strong: rgba(51, 65, 85, 0.6);
+  --chart-bg: #080d19;
+  --chart-grid: #111827;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-base: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --bg-surface: #e2e8f0;
+  --bg-surface-alt: #e2e8f080;
+  --text-heading: #0f172a;
+  --text-body: #334155;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --border: rgba(203, 213, 225, 0.6);
+  --border-strong: rgba(148, 163, 184, 0.4);
+  --chart-bg: #f8fafc;
+  --chart-grid: #e2e8f0;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-body);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-surface);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
