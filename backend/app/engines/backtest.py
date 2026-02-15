@@ -38,9 +38,35 @@ TYPICAL_SPREADS: dict[str, float] = {
 SL_GRID = [0.3, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 TP_GRID = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0]
 
+# Valid entry-hour windows per symbol (broker server time, assumed UTC+2).
+# Entries are only allowed within [start, end] inclusive.
+# Goal: enter during liquid hours, no later than the New York session.
+SESSION_HOURS: dict[str, tuple[int, int]] = {
+    # Commodities — London open through mid-NY session
+    "XAUUSD": (9, 20),
+    "XAGUSD": (9, 20),
+    # US Indices — European pre-market through mid-NY session
+    "US500": (10, 20),
+    "US100": (10, 20),
+    "US30": (10, 20),
+    # European Indices — main European session
+    "GER40": (9, 17),
+    "UK100": (9, 17),
+    "FRA40": (9, 17),
+    "EU50": (9, 17),
+    "SPN35": (9, 17),
+    "N25": (9, 17),
+    # Asian Indices — Asian session through London overlap
+    "JP225": (2, 16),
+    "HK50": (3, 16),
+    "AUS200": (1, 16),
+}
+DEFAULT_SESSION: tuple[int, int] = (8, 20)
 
-def get_valid_entry_hours(h1: pd.DataFrame) -> list[int]:
-    """Return hours that appear on at least 50% of trading days."""
+
+def get_valid_entry_hours(h1: pd.DataFrame, symbol: str = "") -> list[int]:
+    """Return hours that appear on at least 50% of trading days,
+    filtered by the symbol's liquid session window."""
     h1_copy = h1.copy()
     h1_copy["hour"] = h1_copy["open_time"].dt.hour
     h1_copy["date"] = h1_copy["open_time"].dt.date
@@ -48,6 +74,11 @@ def get_valid_entry_hours(h1: pd.DataFrame) -> list[int]:
     hour_counts = h1_copy.groupby("hour")["date"].nunique()
     threshold = total_days * 0.5
     valid = hour_counts[hour_counts >= threshold].index.tolist()
+
+    # Constrain to liquid session hours for this symbol
+    start_h, end_h = SESSION_HOURS.get(symbol, DEFAULT_SESSION)
+    valid = [h for h in valid if start_h <= h <= end_h]
+
     return sorted(valid)
 
 
@@ -197,13 +228,13 @@ def simulate_trades(
     }
 
 
-def sweep_parameters(h1: pd.DataFrame, spread: float) -> dict | None:
+def sweep_parameters(h1: pd.DataFrame, spread: float, symbol: str = "") -> dict | None:
     """
     Test all parameter combinations and return the best one.
 
     Returns dict with best_params and results, or None if no valid hours.
     """
-    valid_hours = get_valid_entry_hours(h1)
+    valid_hours = get_valid_entry_hours(h1, symbol)
     if not valid_hours:
         return None
 
@@ -306,7 +337,7 @@ async def run_backtest_for_symbol(
     spread = TYPICAL_SPREADS.get(symbol, 1.0)
     start_time = time.time()
 
-    sweep = sweep_parameters(h1, spread)
+    sweep = sweep_parameters(h1, spread, symbol)
     if sweep is None:
         logger.warning("No valid entry hours for %s — skipping backtest", symbol)
         return None
