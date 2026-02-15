@@ -27,6 +27,7 @@ class SymbolAnalytics(BaseModel):
     daily_bar_count: int = 0
     # Backtest fields
     backtest_score: float | None = None
+    fundamental_score: float | None = None
     final_score: float | None = None
     rank: int | None = None
     is_active: bool = False
@@ -51,8 +52,9 @@ class AnalysisSummary(BaseModel):
     most_bullish_day: float | None = None
     most_bearish_day: float | None = None
     up_day_win_rate: float | None = None
-    # Backtest fields
+    # Backtest & fundamental fields
     backtest_score: float | None = None
+    fundamental_score: float | None = None
     final_score: float | None = None
     rank: int | None = None
     is_active: bool = False
