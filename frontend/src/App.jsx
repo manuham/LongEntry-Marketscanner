@@ -1,9 +1,40 @@
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
 import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth } from "./api";
 import MarketCard from "./MarketCard";
 import MarketDetail from "./MarketDetail";
 import Results from "./Results";
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 max-w-3xl mx-auto mt-10">
+          <h2 className="text-xl font-bold text-red-400 mb-2">Something went wrong</h2>
+          <pre className="text-sm text-red-300 bg-red-950 rounded p-4 overflow-auto whitespace-pre-wrap">
+            {this.state.error.message}
+            {"\n\n"}
+            {this.state.error.stack}
+          </pre>
+          <button
+            onClick={() => { this.setState({ error: null }); window.location.href = "/"; }}
+            className="mt-4 px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600"
+          >
+            Go back to overview
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const STATUS_STYLE = {
   ok:      { dot: "bg-green-400", label: "All systems operational" },
@@ -103,22 +134,24 @@ export default function App() {
         </nav>
       </header>
 
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <Overview
-              markets={markets}
-              analytics={analytics}
-              aiPredictions={aiPredictions}
-              loading={loading}
-              error={error}
-            />
-          }
-        />
-        <Route path="/market/:symbol" element={<MarketDetail markets={markets} />} />
-        <Route path="/results" element={<Results />} />
-      </Routes>
+      <ErrorBoundary>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Overview
+                markets={markets}
+                analytics={analytics}
+                aiPredictions={aiPredictions}
+                loading={loading}
+                error={error}
+              />
+            }
+          />
+          <Route path="/market/:symbol" element={<MarketDetail markets={markets} />} />
+          <Route path="/results" element={<Results />} />
+        </Routes>
+      </ErrorBoundary>
     </div>
   );
 }
