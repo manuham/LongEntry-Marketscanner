@@ -116,7 +116,7 @@ export default function App() {
   const isHome = location.pathname === "/";
 
   return (
-    <div className="min-h-screen p-6 max-w-7xl mx-auto">
+    <div className="min-h-screen p-6 max-w-[1920px] mx-auto">
       <header className="mb-8">
         <div className="flex items-center gap-3">
           <Link to="/" className="hover:opacity-80 transition">
