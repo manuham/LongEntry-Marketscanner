@@ -56,6 +56,10 @@ export function fetchResults() {
   return apiFetch("/api/results");
 }
 
+export function fetchHealth() {
+  return apiFetch("/api/health");
+}
+
 export function setApiKey(key) {
   localStorage.setItem("le_api_key", key);
   window.location.reload();
