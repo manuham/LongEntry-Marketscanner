@@ -106,3 +106,16 @@ export function updateMaxActive(maxActive) {
     return r.json();
   });
 }
+
+export function applyRanking() {
+  return fetch("/api/config/apply-ranking", {
+    method: "POST",
+    headers: {
+      "X-API-Key": getApiKey(),
+      "Content-Type": "application/json",
+    },
+  }).then((r) => {
+    if (!r.ok) throw new Error(`API error ${r.status}: ${r.statusText}`);
+    return r.json();
+  });
+}

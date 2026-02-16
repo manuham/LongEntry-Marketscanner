@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
 //| FixedLongEntry_Server.mq5 — Server-driven long entry EA         |
-//| Pulls config from server daily, enters BUY at assigned time     |
+//| Pulls config from server periodically, enters BUY at entry time |
 //| Attach to each of the 14 charts                                 |
 //+------------------------------------------------------------------+
 #property copyright "LongEntry"
@@ -19,8 +19,9 @@ input double   RiskAmount = 100.0;          // Risk Amount in Account Currency
 input group "==== Trading Settings ===="
 input ulong    MagicNumber = 100001;        // Magic Number
 input string   TradeComment = "LongEntry";  // Trade Comment
+input int      ConfigRefreshHours = 4;      // Config refresh interval (hours)
 
-// Server config (refreshed daily)
+// Server config (refreshed periodically)
 bool     g_active       = false;
 int      g_entryHour    = 0;
 int      g_entryMinute  = 0;
@@ -51,7 +52,8 @@ int OnInit()
 
    Print("[LongEntry] Initialized for ", _Symbol,
          " | Magic: ", MagicNumber,
-         " | Risk: ", DoubleToString(RiskAmount, 2));
+         " | Risk: ", DoubleToString(RiskAmount, 2),
+         " | Refresh: every ", ConfigRefreshHours, "h");
 
    // Fetch config immediately on init
    FetchConfig();
@@ -79,8 +81,10 @@ void OnTick()
    if(g_lastTradeDate < todayStart)
       g_tradedToday = false;
 
-   // Fetch config once per day (before entry time)
-   if(g_lastConfigFetch < todayStart)
+   // Fetch config periodically (every ConfigRefreshHours hours)
+   int refreshSeconds = ConfigRefreshHours * 3600;
+   if(refreshSeconds <= 0) refreshSeconds = 14400;  // fallback to 4h
+   if(TimeCurrent() - g_lastConfigFetch >= refreshSeconds)
       FetchConfig();
 
    // Check if it's entry time

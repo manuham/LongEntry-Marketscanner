@@ -1,6 +1,6 @@
 import { Component, useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
-import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive, overrideMarket, setApiKey } from "./api";
+import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive, applyRanking, overrideMarket, setApiKey } from "./api";
 import { useTheme } from "./ThemeContext";
 import MarketCard from "./MarketCard";
 import MarketDetail from "./MarketDetail";
@@ -329,9 +329,10 @@ function ViewToggle({ mode, onToggle }) {
 
 // ─── Overview ────────────────────────────────────────────────────────────────
 
-function ActiveMarketsInput({ maxActive, onUpdate }) {
+function ActiveMarketsInput({ maxActive, activeCount, onUpdate, onApply }) {
   const [value, setValue] = useState(maxActive);
   const [saving, setSaving] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [err, setErr] = useState(null);
 
   useEffect(() => { setValue(maxActive); }, [maxActive]);
@@ -342,18 +343,27 @@ function ActiveMarketsInput({ maxActive, onUpdate }) {
     setSaving(true);
     setErr(null);
     updateMaxActive(clamped)
-      .then((res) => onUpdate(res.max_active))
+      .then((res) => onUpdate(res.max_active, res.active_count))
       .catch((e) => { setValue(maxActive); setErr(e.message); })
       .finally(() => setSaving(false));
   };
 
+  const handleApply = () => {
+    setApplying(true);
+    setErr(null);
+    applyRanking()
+      .then((res) => onApply(res.active_count))
+      .catch((e) => setErr(e.message))
+      .finally(() => setApplying(false));
+  };
+
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 flex-wrap">
       <span className="text-sm text-th-secondary">Activate top</span>
       <div className="flex items-center gap-1">
         <button
           onClick={() => handleChange(value - 1)}
-          disabled={value <= 1 || saving}
+          disabled={value <= 1 || saving || applying}
           className="w-7 h-7 rounded-md bg-th-surface text-th-heading hover:bg-th-card-hover disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-sm font-bold transition-colors"
         >
           -
@@ -361,20 +371,31 @@ function ActiveMarketsInput({ maxActive, onUpdate }) {
         <span className="w-8 text-center font-mono text-lg font-bold text-th-heading">{value}</span>
         <button
           onClick={() => handleChange(value + 1)}
-          disabled={value >= 14 || saving}
+          disabled={value >= 14 || saving || applying}
           className="w-7 h-7 rounded-md bg-th-surface text-th-heading hover:bg-th-card-hover disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-sm font-bold transition-colors"
         >
           +
         </button>
       </div>
-      <span className="text-sm text-th-secondary">markets</span>
+      <button
+        onClick={handleApply}
+        disabled={saving || applying}
+        className="px-3 py-1 rounded-md bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        {applying ? "Applying..." : "Activate"}
+      </button>
+      {activeCount != null && (
+        <span className="text-xs text-th-faint">
+          ({activeCount} active)
+        </span>
+      )}
       {saving && <span className="text-xs text-th-faint animate-pulse">saving...</span>}
       {err && <span className="text-xs text-rose-400">{err}</span>}
     </div>
   );
 }
 
-function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, onMaxActiveUpdate, onToggleActive, loading, error }) {
+function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, activeCount, onMaxActiveUpdate, onApplyRanking, onToggleActive, loading, error }) {
   const [viewMode, setViewMode] = useState("grid");
 
   // Sort markets: ranked markets first (by rank ascending), unranked at bottom
@@ -399,7 +420,7 @@ function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, onMa
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-6 flex-wrap">
           <h2 className="text-lg font-semibold text-th-heading">{markets.length} Markets</h2>
-          <ActiveMarketsInput maxActive={maxActive} onUpdate={onMaxActiveUpdate} />
+          <ActiveMarketsInput maxActive={maxActive} activeCount={activeCount} onUpdate={onMaxActiveUpdate} onApply={onApplyRanking} />
         </div>
         <ViewToggle mode={viewMode} onToggle={setViewMode} />
       </div>
@@ -441,6 +462,7 @@ export default function App() {
   const [health, setHealth] = useState(null);
   const [drawdown, setDrawdown] = useState([]);
   const [maxActive, setMaxActive] = useState(6);
+  const [activeCount, setActiveCount] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -480,7 +502,7 @@ export default function App() {
       .finally(() => setLoading(false));
     fetchHealth().then(setHealth).catch(() => {});
     fetchDrawdown().then(setDrawdown).catch(() => {});
-    fetchMaxActive().then((res) => setMaxActive(res.max_active)).catch(() => {});
+    fetchMaxActive().then((res) => { setMaxActive(res.max_active); setActiveCount(res.active_count); }).catch(() => {});
   }, []);
 
   const NAV_ITEMS = [
@@ -533,7 +555,9 @@ export default function App() {
                 aiPredictions={aiPredictions}
                 drawdown={drawdown}
                 maxActive={maxActive}
-                onMaxActiveUpdate={(val) => { setMaxActive(val); refreshAnalytics(); }}
+                activeCount={activeCount}
+                onMaxActiveUpdate={(val, count) => { setMaxActive(val); setActiveCount(count); refreshAnalytics(); }}
+                onApplyRanking={(count) => { setActiveCount(count); refreshAnalytics(); }}
                 onToggleActive={handleToggleActive}
                 loading={loading}
                 error={error}

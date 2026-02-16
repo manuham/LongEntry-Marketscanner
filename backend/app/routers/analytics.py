@@ -59,7 +59,11 @@ def _row_to_summary(r) -> AnalysisSummary:
 
 @router.get("/analytics", response_model=list[AnalysisSummary])
 async def list_analytics():
-    """Return latest weekly analysis for all markets (for dashboard overview)."""
+    """Return latest weekly analysis for all markets (for dashboard overview).
+
+    Uses DISTINCT ON to always return the most recent row per symbol,
+    preventing gaps when the week changes but analysis hasn't run yet.
+    """
     week_start = get_current_week_start()
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -73,14 +77,15 @@ async def list_analytics():
             week_start,
         )
 
-    # If no results for current week, try the most recent week
-    if not rows:
+    # If not all markets have data for this week, get most recent per symbol
+    if len(rows) < 14:
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 f"""
                 SELECT DISTINCT ON (symbol)
                     {_ANALYSIS_COLS}
                 FROM weekly_analysis
+                WHERE final_score IS NOT NULL
                 ORDER BY symbol, week_start DESC
                 """
             )
