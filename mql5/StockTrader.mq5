@@ -33,6 +33,7 @@ input string   TradeComment = "StockTrader"; // Trade Comment
 input int      ConfigRefreshHours = 4;      // Config refresh interval (hours)
 
 input group "==== Data Upload Settings ===="
+input bool     ForceUploadOnInit = false;   // Force upload ALL candle data on EA start (set true, restart, then set false)
 input int      InitialYears    = 2;         // Years of H1 history for first upload
 input int      MaxUploadRetries = 3;        // Max retries per upload chunk
 input int      RetryDelaySec   = 30;        // Seconds between upload retries
@@ -121,6 +122,18 @@ int OnInit()
 
    // Fetch all configs immediately
    FetchAllConfigs();
+
+   // Force upload all candle data if requested
+   if(ForceUploadOnInit)
+     {
+      Print("[StockTrader] *** FORCE UPLOAD MODE — uploading ", InitialYears,
+            " years of H1 data for all ", validCount, " symbols ***");
+      // Reset upload times so all symbols get full history
+      for(int i = 0; i < g_symbolCount; i++)
+         g_lastUploadTime[i] = 0;
+      UploadAllCandles();
+      Print("[StockTrader] *** FORCE UPLOAD COMPLETE — set ForceUploadOnInit back to false ***");
+     }
 
    // Start timer for periodic checks
    if(!EventSetTimer(TimerIntervalSec))
