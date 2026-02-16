@@ -32,3 +32,9 @@ class MaxActiveRequest(BaseModel):
 class MaxActiveResponse(BaseModel):
     max_active: int
     active_count: int
+
+
+class ApplyRankingResponse(BaseModel):
+    max_active: int
+    active_count: int
+    applied: bool
