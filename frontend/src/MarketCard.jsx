@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 const CATEGORY_COLORS = {
   commodity: "border-yellow-600",
   index: "border-blue-600",
+  stock: "border-purple-600",
 };
 
 function scoreColor(score) {

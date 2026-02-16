@@ -26,12 +26,17 @@ class OverrideRequest(BaseModel):
 
 
 class MaxActiveRequest(BaseModel):
-    max_active: int = Field(ge=1, le=14)
+    max_active: int = Field(ge=1, le=50)
 
 
 class MaxActiveResponse(BaseModel):
     max_active: int
     active_count: int
+
+
+class MaxActiveAllResponse(BaseModel):
+    markets: MaxActiveResponse
+    stocks: MaxActiveResponse
 
 
 class ApplyRankingResponse(BaseModel):

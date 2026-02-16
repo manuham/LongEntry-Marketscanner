@@ -1,6 +1,6 @@
 import { Component, useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation } from "react-router-dom";
-import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive, applyRanking, overrideMarket, setApiKey } from "./api";
+import { fetchMarkets, fetchAnalytics, fetchAIPredictions, fetchHealth, fetchDrawdown, fetchMaxActive, updateMaxActive, fetchMaxActiveStocks, updateMaxActiveStocks, applyRanking, overrideMarket, setApiKey } from "./api";
 import { useTheme } from "./ThemeContext";
 import MarketCard from "./MarketCard";
 import MarketDetail from "./MarketDetail";
@@ -327,9 +327,9 @@ function ViewToggle({ mode, onToggle }) {
   );
 }
 
-// ─── Overview ────────────────────────────────────────────────────────────────
+// ─── Active Markets Input (reusable for both pools) ─────────────────────────
 
-function ActiveMarketsInput({ maxActive, activeCount, onUpdate, onApply }) {
+function ActiveMarketsInput({ maxActive, maxLimit, activeCount, onUpdate, onApply, updateFn }) {
   const [value, setValue] = useState(maxActive);
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -338,11 +338,11 @@ function ActiveMarketsInput({ maxActive, activeCount, onUpdate, onApply }) {
   useEffect(() => { setValue(maxActive); }, [maxActive]);
 
   const handleChange = (newVal) => {
-    const clamped = Math.max(1, Math.min(14, newVal));
+    const clamped = Math.max(1, Math.min(maxLimit, newVal));
     setValue(clamped);
     setSaving(true);
     setErr(null);
-    updateMaxActive(clamped)
+    updateFn(clamped)
       .then((res) => onUpdate(res.max_active, res.active_count))
       .catch((e) => { setValue(maxActive); setErr(e.message); })
       .finally(() => setSaving(false));
@@ -371,7 +371,7 @@ function ActiveMarketsInput({ maxActive, activeCount, onUpdate, onApply }) {
         <span className="w-8 text-center font-mono text-lg font-bold text-th-heading">{value}</span>
         <button
           onClick={() => handleChange(value + 1)}
-          disabled={value >= 14 || saving || applying}
+          disabled={value >= maxLimit || saving || applying}
           className="w-7 h-7 rounded-md bg-th-surface text-th-heading hover:bg-th-card-hover disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-sm font-bold transition-colors"
         >
           +
@@ -395,10 +395,9 @@ function ActiveMarketsInput({ maxActive, activeCount, onUpdate, onApply }) {
   );
 }
 
-function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, activeCount, onMaxActiveUpdate, onApplyRanking, onToggleActive, loading, error }) {
-  const [viewMode, setViewMode] = useState("grid");
+// ─── Market Section (renders a grid or table of market cards) ────────────────
 
-  // Sort markets: ranked markets first (by rank ascending), unranked at bottom
+function MarketSection({ title, titleColor, markets, analytics, aiPredictions, onToggleActive, viewMode }) {
   const sorted = [...markets].sort((a, b) => {
     const ra = analytics[a.symbol]?.rank;
     const rb = analytics[b.symbol]?.rank;
@@ -407,6 +406,49 @@ function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, acti
     if (rb != null) return 1;
     return 0;
   });
+
+  if (viewMode === "grid") {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {sorted.map((m) => (
+          <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} onToggleActive={onToggleActive} viewMode="grid" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-th-card border border-th rounded-xl overflow-hidden">
+      <div className="grid grid-cols-[40px_1fr_100px_80px_80px_80px_60px_80px] gap-2 px-4 py-2 text-[10px] text-th-faint uppercase tracking-wide border-b border-th font-medium">
+        <span></span>
+        <span>Symbol</span>
+        <span className="text-right">Price</span>
+        <span className="text-right">Score</span>
+        <span className="text-right">Win %</span>
+        <span className="text-right">BT Ret</span>
+        <span className="text-center">AI</span>
+        <span className="text-right">Rank</span>
+      </div>
+      {sorted.map((m) => (
+        <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} onToggleActive={onToggleActive} viewMode="table" />
+      ))}
+    </div>
+  );
+}
+
+// ─── Overview ────────────────────────────────────────────────────────────────
+
+function Overview({
+  markets, analytics, aiPredictions, drawdown,
+  maxActive, activeCount, onMaxActiveUpdate,
+  maxActiveStocks, activeCountStocks, onMaxActiveStocksUpdate,
+  onApplyRanking, onToggleActive, loading, error,
+}) {
+  const [viewMode, setViewMode] = useState("grid");
+
+  // Split markets into two pools
+  const indexMarkets = markets.filter((m) => m.category !== "stock");
+  const stockMarkets = markets.filter((m) => m.category === "stock");
 
   return (
     <>
@@ -417,38 +459,72 @@ function Overview({ markets, analytics, aiPredictions, drawdown, maxActive, acti
 
       <DrawdownSidebar drawdown={drawdown} />
 
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <div className="flex items-center gap-6 flex-wrap">
-          <h2 className="text-lg font-semibold text-th-heading">{markets.length} Markets</h2>
-          <ActiveMarketsInput maxActive={maxActive} activeCount={activeCount} onUpdate={onMaxActiveUpdate} onApply={onApplyRanking} />
-        </div>
+      {/* View toggle (shared across both sections) */}
+      <div className="flex items-center justify-end mb-4">
         <ViewToggle mode={viewMode} onToggle={setViewMode} />
       </div>
 
-      {viewMode === "grid" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {sorted.map((m) => (
-            <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} onToggleActive={onToggleActive} viewMode="grid" />
-          ))}
-        </div>
-      ) : (
-        <div className="bg-th-card border border-th rounded-xl overflow-hidden">
-          {/* Table header */}
-          <div className="grid grid-cols-[40px_1fr_100px_80px_80px_80px_60px_80px] gap-2 px-4 py-2 text-[10px] text-th-faint uppercase tracking-wide border-b border-th font-medium">
-            <span></span>
-            <span>Symbol</span>
-            <span className="text-right">Price</span>
-            <span className="text-right">Score</span>
-            <span className="text-right">Win %</span>
-            <span className="text-right">BT Ret</span>
-            <span className="text-center">AI</span>
-            <span className="text-right">Rank</span>
+      {/* ─── Indices & Commodities Section ─── */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div className="flex items-center gap-6 flex-wrap">
+            <h2 className="text-lg font-semibold text-th-heading">
+              <span className="text-blue-400">{indexMarkets.length}</span> Indices & Commodities
+            </h2>
+            <ActiveMarketsInput
+              maxActive={maxActive}
+              maxLimit={14}
+              activeCount={activeCount}
+              onUpdate={onMaxActiveUpdate}
+              onApply={onApplyRanking}
+              updateFn={updateMaxActive}
+            />
           </div>
-          {sorted.map((m) => (
-            <MarketCard key={m.symbol} market={m} analytics={analytics[m.symbol]} aiPrediction={aiPredictions[m.symbol]} onToggleActive={onToggleActive} viewMode="table" />
-          ))}
         </div>
-      )}
+        <MarketSection
+          title="Indices & Commodities"
+          titleColor="text-blue-400"
+          markets={indexMarkets}
+          analytics={analytics}
+          aiPredictions={aiPredictions}
+          onToggleActive={onToggleActive}
+          viewMode={viewMode}
+        />
+      </div>
+
+      {/* ─── Stocks Section ─── */}
+      <div>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div className="flex items-center gap-6 flex-wrap">
+            <h2 className="text-lg font-semibold text-th-heading">
+              <span className="text-purple-400">{stockMarkets.length}</span> Stocks
+            </h2>
+            <ActiveMarketsInput
+              maxActive={maxActiveStocks}
+              maxLimit={23}
+              activeCount={activeCountStocks}
+              onUpdate={onMaxActiveStocksUpdate}
+              onApply={onApplyRanking}
+              updateFn={updateMaxActiveStocks}
+            />
+          </div>
+        </div>
+        {stockMarkets.length > 0 ? (
+          <MarketSection
+            title="Stocks"
+            titleColor="text-purple-400"
+            markets={stockMarkets}
+            analytics={analytics}
+            aiPredictions={aiPredictions}
+            onToggleActive={onToggleActive}
+            viewMode={viewMode}
+          />
+        ) : (
+          <div className="bg-th-card border border-th rounded-xl p-8 text-center">
+            <p className="text-th-muted text-sm">No stock data yet. Stocks will appear here once DataSender uploads H1 candles from MT5.</p>
+          </div>
+        )}
+      </div>
     </>
   );
 }
@@ -463,6 +539,8 @@ export default function App() {
   const [drawdown, setDrawdown] = useState([]);
   const [maxActive, setMaxActive] = useState(6);
   const [activeCount, setActiveCount] = useState(null);
+  const [maxActiveStocks, setMaxActiveStocks] = useState(4);
+  const [activeCountStocks, setActiveCountStocks] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const location = useLocation();
@@ -503,6 +581,7 @@ export default function App() {
     fetchHealth().then(setHealth).catch(() => {});
     fetchDrawdown().then(setDrawdown).catch(() => {});
     fetchMaxActive().then((res) => { setMaxActive(res.max_active); setActiveCount(res.active_count); }).catch(() => {});
+    fetchMaxActiveStocks().then((res) => { setMaxActiveStocks(res.max_active); setActiveCountStocks(res.active_count); }).catch(() => {});
   }, []);
 
   const NAV_ITEMS = [
@@ -557,6 +636,9 @@ export default function App() {
                 maxActive={maxActive}
                 activeCount={activeCount}
                 onMaxActiveUpdate={(val, count) => { setMaxActive(val); setActiveCount(count); refreshAnalytics(); }}
+                maxActiveStocks={maxActiveStocks}
+                activeCountStocks={activeCountStocks}
+                onMaxActiveStocksUpdate={(val, count) => { setMaxActiveStocks(val); setActiveCountStocks(count); refreshAnalytics(); }}
                 onApplyRanking={(count) => { setActiveCount(count); refreshAnalytics(); }}
                 onToggleActive={handleToggleActive}
                 loading={loading}

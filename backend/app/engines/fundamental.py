@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 
 # Symbol → region mapping
 SYMBOL_REGION = {
+    # Commodities
     "XAUUSD": "commodities",
     "XAGUSD": "commodities",
+    # Indices
     "US500": "US",
     "US100": "US",
     "US30": "US",
@@ -32,6 +34,31 @@ SYMBOL_REGION = {
     "JP225": "JP",
     "AUS200": "AU",
     "HK50": "HK",
+    # US Stocks — mapped to US region (equity scoring)
+    "AAPL": "US",
+    "AMZN": "US",
+    "BABA": "HK",   # Chinese company, HK-sensitive
+    "BAC": "US",
+    "GOOG": "US",
+    "META": "US",
+    "MSFT": "US",
+    "NFLX": "US",
+    "NVDA": "US",
+    "PFE": "US",
+    "T": "US",
+    "TSLA": "US",
+    "V": "US",
+    "WMT": "US",
+    "ZM": "US",
+    # European Stocks — mapped to EU region
+    "AIRF": "EU",
+    "ALVG": "EU",
+    "BAYGn": "EU",
+    "DBKGn": "EU",
+    "IBE": "EU",
+    "LVMH": "EU",
+    "RACE": "EU",
+    "VOWG_p": "EU",
 }
 
 COMMODITY_SYMBOLS = {"XAUUSD", "XAGUSD"}

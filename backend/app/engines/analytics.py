@@ -192,6 +192,14 @@ def compute_technical_score(metrics: dict) -> float:
             lo, hi, mid = 0.3, 1.2, 0.75   # Commodities: tighter range
         elif symbol in ("JP225", "HK50", "AUS200"):
             lo, hi, mid = 0.4, 1.8, 1.1    # Asian indices: wider range
+        elif symbol in ("TSLA", "NVDA", "BABA", "ZM", "NFLX"):
+            lo, hi, mid = 1.0, 4.0, 2.5    # High-vol stocks: much wider range
+        elif symbol in (
+            "AAPL", "AMZN", "GOOG", "META", "MSFT", "BAC", "V", "PFE",
+            "T", "WMT", "AIRF", "ALVG", "BAYGn", "DBKGn", "IBE",
+            "LVMH", "RACE", "VOWG_p",
+        ):
+            lo, hi, mid = 0.5, 2.5, 1.5    # Large-cap stocks: moderate range
         else:
             lo, hi, mid = 0.5, 2.0, 1.25   # US/EU indices: default
         if lo <= atr_pct <= hi:
@@ -374,7 +382,7 @@ def get_current_week_start() -> date:
 
 async def run_full_analysis() -> list[dict]:
     """
-    Run analytics + backtest for all 14 markets.
+    Run analytics + backtest for all markets (indices, commodities, and stocks).
     Called by the Saturday cron job.
     Returns list of results.
     """
@@ -384,8 +392,11 @@ async def run_full_analysis() -> list[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         symbols = await conn.fetch(
-            "SELECT symbol FROM markets WHERE is_in_universe = true ORDER BY symbol"
+            "SELECT symbol, category FROM markets WHERE is_in_universe = true ORDER BY symbol"
         )
+
+    # Build symbol→category lookup
+    symbol_category = {row["symbol"]: row["category"] for row in symbols}
 
     # Phase 1: Technical analysis + backtest for each symbol
     results = []
@@ -430,31 +441,48 @@ async def run_full_analysis() -> list[dict]:
             logger.exception("Failed to analyze %s", symbol)
             results.append({"symbol": symbol, "error": "Analysis failed"})
 
-    # Phase 2: Rank by final_score and activate top N
+    # Phase 2: Rank and activate in separate pools (stocks vs indices/commodities)
     scored = [r for r in results if "error" not in r and "final_score" in r]
-    scored.sort(key=lambda r: r["final_score"], reverse=True)
-
-    max_active = settings.max_active_markets
     min_score = settings.min_final_score
 
-    for rank_idx, m in enumerate(scored):
+    # Split into category pools
+    stocks = [r for r in scored if symbol_category.get(r["symbol"]) == "stock"]
+    non_stocks = [r for r in scored if symbol_category.get(r["symbol"]) != "stock"]
+
+    stocks.sort(key=lambda r: r["final_score"], reverse=True)
+    non_stocks.sort(key=lambda r: r["final_score"], reverse=True)
+
+    max_active_markets = settings.max_active_markets
+    max_active_stocks = settings.max_active_stocks
+
+    for rank_idx, m in enumerate(non_stocks):
         m["rank"] = int(rank_idx + 1)
         m["final_score"] = float(m["final_score"])
-        m["is_active"] = bool((rank_idx < max_active) and (m["final_score"] >= min_score))
+        m["is_active"] = bool((rank_idx < max_active_markets) and (m["final_score"] >= min_score))
+
+    for rank_idx, m in enumerate(stocks):
+        m["rank"] = int(rank_idx + 1)
+        m["final_score"] = float(m["final_score"])
+        m["is_active"] = bool((rank_idx < max_active_stocks) and (m["final_score"] >= min_score))
+
+    all_scored = non_stocks + stocks
 
     # Phase 3: Store all results
-    for m in scored:
+    for m in all_scored:
         try:
             await store_analysis(m)
         except Exception:
             logger.exception("Failed to store analysis for %s", m["symbol"])
 
-    analyzed = len(scored)
+    analyzed = len(all_scored)
     failed = len(results) - analyzed
+    active_markets = sum(1 for m in non_stocks if m.get("is_active"))
+    active_stocks = sum(1 for m in stocks if m.get("is_active"))
     logger.info(
-        "Weekly analysis complete: %d/%d symbols, %d active",
+        "Weekly analysis complete: %d/%d symbols, %d markets active, %d stocks active",
         analyzed,
         len(symbols),
-        sum(1 for m in scored if m.get("is_active")),
+        active_markets,
+        active_stocks,
     )
     return results
