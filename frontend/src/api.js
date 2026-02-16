@@ -107,6 +107,28 @@ export function updateMaxActive(maxActive) {
   });
 }
 
+export function fetchMaxActiveStocks() {
+  return apiFetch("/api/config/max-active-stocks");
+}
+
+export function updateMaxActiveStocks(maxActive) {
+  return fetch("/api/config/max-active-stocks", {
+    method: "PUT",
+    headers: {
+      "X-API-Key": getApiKey(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ max_active: maxActive }),
+  }).then((r) => {
+    if (!r.ok) throw new Error(`API error ${r.status}: ${r.statusText}`);
+    return r.json();
+  });
+}
+
+export function fetchMaxActiveAll() {
+  return apiFetch("/api/config/max-active-all");
+}
+
 export function applyRanking() {
   return fetch("/api/config/apply-ranking", {
     method: "POST",

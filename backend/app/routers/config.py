@@ -9,6 +9,7 @@ from app.database import get_pool
 from app.schemas.market import (
     ApplyRankingResponse,
     MarketConfigResponse,
+    MaxActiveAllResponse,
     MaxActiveRequest,
     MaxActiveResponse,
     OverrideRequest,
@@ -45,12 +46,17 @@ async def _effective_week_start(pool) -> date:
 
 @router.get("/config/max-active-markets", response_model=MaxActiveResponse)
 async def get_max_active():
-    """Return the current max active markets setting."""
+    """Return the current max active markets (indices/commodities) setting."""
     pool = await get_pool()
     week_start = await _effective_week_start(pool)
     async with pool.acquire() as conn:
         count = await conn.fetchval(
-            "SELECT COUNT(*) FROM weekly_analysis WHERE week_start = $1 AND is_active = true",
+            """
+            SELECT COUNT(*) FROM weekly_analysis wa
+            JOIN markets m ON m.symbol = wa.symbol
+            WHERE wa.week_start = $1 AND wa.is_active = true
+              AND m.category != 'stock'
+            """,
             week_start,
         )
     return MaxActiveResponse(max_active=settings.max_active_markets, active_count=count or 0)
@@ -61,30 +67,100 @@ async def set_max_active(
     body: MaxActiveRequest,
     api_key: str = Depends(require_api_key),
 ):
-    """Update max active markets and re-rank."""
+    """Update max active markets (indices/commodities) and re-rank."""
     settings.max_active_markets = body.max_active
     pool = await get_pool()
-    count = await _apply_ranking(pool, body.max_active)
+    count = await _apply_ranking_for_category(pool, body.max_active, is_stock=False)
     return MaxActiveResponse(max_active=body.max_active, active_count=count)
 
 
-async def _apply_ranking(pool, max_active: int) -> int:
-    """Apply ranking: activate top N non-overridden markets.
+@router.get("/config/max-active-stocks", response_model=MaxActiveResponse)
+async def get_max_active_stocks():
+    """Return the current max active stocks setting."""
+    pool = await get_pool()
+    week_start = await _effective_week_start(pool)
+    async with pool.acquire() as conn:
+        count = await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM weekly_analysis wa
+            JOIN markets m ON m.symbol = wa.symbol
+            WHERE wa.week_start = $1 AND wa.is_active = true
+              AND m.category = 'stock'
+            """,
+            week_start,
+        )
+    return MaxActiveResponse(max_active=settings.max_active_stocks, active_count=count or 0)
+
+
+@router.put("/config/max-active-stocks", response_model=MaxActiveResponse)
+async def set_max_active_stocks(
+    body: MaxActiveRequest,
+    api_key: str = Depends(require_api_key),
+):
+    """Update max active stocks and re-rank."""
+    settings.max_active_stocks = body.max_active
+    pool = await get_pool()
+    count = await _apply_ranking_for_category(pool, body.max_active, is_stock=True)
+    return MaxActiveResponse(max_active=body.max_active, active_count=count)
+
+
+@router.get("/config/max-active-all", response_model=MaxActiveAllResponse)
+async def get_max_active_all():
+    """Return max active settings for both markets and stocks."""
+    pool = await get_pool()
+    week_start = await _effective_week_start(pool)
+    async with pool.acquire() as conn:
+        market_count = await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM weekly_analysis wa
+            JOIN markets m ON m.symbol = wa.symbol
+            WHERE wa.week_start = $1 AND wa.is_active = true
+              AND m.category != 'stock'
+            """,
+            week_start,
+        )
+        stock_count = await conn.fetchval(
+            """
+            SELECT COUNT(*) FROM weekly_analysis wa
+            JOIN markets m ON m.symbol = wa.symbol
+            WHERE wa.week_start = $1 AND wa.is_active = true
+              AND m.category = 'stock'
+            """,
+            week_start,
+        )
+    return MaxActiveAllResponse(
+        markets=MaxActiveResponse(
+            max_active=settings.max_active_markets,
+            active_count=market_count or 0,
+        ),
+        stocks=MaxActiveResponse(
+            max_active=settings.max_active_stocks,
+            active_count=stock_count or 0,
+        ),
+    )
+
+
+async def _apply_ranking_for_category(pool, max_active: int, is_stock: bool) -> int:
+    """Apply ranking for a specific category pool (stocks or non-stocks).
 
     Manually overridden markets keep their state. The remaining auto
     slots are filled by top-ranked markets that meet the minimum score.
-    Returns the total active count.
+    Returns the active count for this category.
     """
     week_start = await _effective_week_start(pool)
     min_score = settings.min_final_score
+    category_filter = "= 'stock'" if is_stock else "!= 'stock'"
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """
-            SELECT symbol, final_score, rank, is_manually_overridden, is_active
-            FROM weekly_analysis
-            WHERE week_start = $1 AND final_score IS NOT NULL
-            ORDER BY final_score DESC NULLS LAST
+            f"""
+            SELECT wa.symbol, wa.final_score, wa.rank,
+                   wa.is_manually_overridden, wa.is_active
+            FROM weekly_analysis wa
+            JOIN markets m ON m.symbol = wa.symbol
+            WHERE wa.week_start = $1 AND wa.final_score IS NOT NULL
+              AND m.category {category_filter}
+            ORDER BY wa.final_score DESC NULLS LAST
             """,
             week_start,
         )
@@ -116,7 +192,12 @@ async def _apply_ranking(pool, max_active: int) -> int:
             auto_idx += 1
 
         count = await conn.fetchval(
-            "SELECT COUNT(*) FROM weekly_analysis WHERE week_start = $1 AND is_active = true",
+            f"""
+            SELECT COUNT(*) FROM weekly_analysis wa
+            JOIN markets m ON m.symbol = wa.symbol
+            WHERE wa.week_start = $1 AND wa.is_active = true
+              AND m.category {category_filter}
+            """,
             week_start,
         )
 
@@ -125,18 +206,23 @@ async def _apply_ranking(pool, max_active: int) -> int:
 
 @router.post("/config/apply-ranking", response_model=ApplyRankingResponse)
 async def apply_ranking(api_key: str = Depends(require_api_key)):
-    """Re-apply ranking using current max_active setting.
+    """Re-apply ranking for both markets and stocks.
 
-    Activates the top N markets by score while preserving manual overrides.
-    Use this after changing max_active or to ensure the correct markets are active.
+    Activates the top N per category while preserving manual overrides.
     """
     pool = await get_pool()
-    max_active = settings.max_active_markets
-    count = await _apply_ranking(pool, max_active)
-    logger.info("Applied ranking: max_active=%d, active_count=%d", max_active, count)
+    market_count = await _apply_ranking_for_category(pool, settings.max_active_markets, is_stock=False)
+    stock_count = await _apply_ranking_for_category(pool, settings.max_active_stocks, is_stock=True)
+    total = market_count + stock_count
+    logger.info(
+        "Applied ranking: markets=%d/%d, stocks=%d/%d, total=%d",
+        market_count, settings.max_active_markets,
+        stock_count, settings.max_active_stocks,
+        total,
+    )
     return ApplyRankingResponse(
-        max_active=max_active,
-        active_count=count,
+        max_active=settings.max_active_markets,
+        active_count=total,
         applied=True,
     )
 
@@ -207,10 +293,10 @@ async def override_market(
     week_start = await _effective_week_start(pool)
 
     async with pool.acquire() as conn:
-        exists = await conn.fetchval(
-            "SELECT 1 FROM markets WHERE symbol = $1", symbol
+        market = await conn.fetchrow(
+            "SELECT symbol, category FROM markets WHERE symbol = $1", symbol
         )
-        if not exists:
+        if not market:
             raise HTTPException(status_code=404, detail=f"Unknown symbol: {symbol}")
 
         if body.active is None:
@@ -224,8 +310,10 @@ async def override_market(
                 symbol,
                 week_start,
             )
-            # Re-apply ranking so this market gets auto-ranked again
-            await _apply_ranking(pool, settings.max_active_markets)
+            # Re-apply ranking for the correct category pool
+            is_stock = market["category"] == "stock"
+            max_active = settings.max_active_stocks if is_stock else settings.max_active_markets
+            await _apply_ranking_for_category(pool, max_active, is_stock=is_stock)
         else:
             # Set manual override on the effective week's row
             await conn.execute(

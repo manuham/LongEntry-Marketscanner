@@ -19,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 # Typical spreads in price points per symbol (half-spread added to entry)
 TYPICAL_SPREADS: dict[str, float] = {
+    # Commodities
     "XAUUSD": 0.30,
     "XAGUSD": 0.03,
+    # Indices
     "US500": 0.50,
     "US100": 1.50,
     "US30": 3.00,
@@ -33,6 +35,31 @@ TYPICAL_SPREADS: dict[str, float] = {
     "SPN35": 5.00,
     "HK50": 8.00,
     "N25": 0.20,
+    # US Stocks (price-point spreads for stock CFDs)
+    "AAPL": 0.04,
+    "AMZN": 0.10,
+    "BABA": 0.05,
+    "BAC": 0.02,
+    "GOOG": 0.10,
+    "META": 0.08,
+    "MSFT": 0.05,
+    "NFLX": 0.15,
+    "NVDA": 0.08,
+    "PFE": 0.02,
+    "T": 0.02,
+    "TSLA": 0.12,
+    "V": 0.05,
+    "WMT": 0.03,
+    "ZM": 0.05,
+    # European Stocks (wider spreads)
+    "AIRF": 0.03,
+    "ALVG": 0.15,
+    "BAYGn": 0.05,
+    "DBKGn": 0.03,
+    "IBE": 0.02,
+    "LVMH": 0.40,
+    "RACE": 0.20,
+    "VOWG_p": 0.15,
 }
 
 SL_GRID = [0.3, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
@@ -60,6 +87,31 @@ SESSION_HOURS: dict[str, tuple[int, int]] = {
     "JP225": (2, 16),
     "HK50": (3, 16),
     "AUS200": (1, 16),
+    # US Stocks — US market hours (broker time UTC+2: 15:30-22:00)
+    "AAPL": (15, 21),
+    "AMZN": (15, 21),
+    "BABA": (15, 21),
+    "BAC": (15, 21),
+    "GOOG": (15, 21),
+    "META": (15, 21),
+    "MSFT": (15, 21),
+    "NFLX": (15, 21),
+    "NVDA": (15, 21),
+    "PFE": (15, 21),
+    "T": (15, 21),
+    "TSLA": (15, 21),
+    "V": (15, 21),
+    "WMT": (15, 21),
+    "ZM": (15, 21),
+    # European Stocks — main European session (broker time UTC+2)
+    "AIRF": (9, 17),
+    "ALVG": (9, 17),
+    "BAYGn": (9, 17),
+    "DBKGn": (9, 17),
+    "IBE": (9, 17),
+    "LVMH": (9, 17),
+    "RACE": (9, 17),
+    "VOWG_p": (9, 17),
 }
 DEFAULT_SESSION: tuple[int, int] = (8, 20)
 

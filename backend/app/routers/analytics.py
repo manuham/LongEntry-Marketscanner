@@ -78,7 +78,11 @@ async def list_analytics():
         )
 
     # If not all markets have data for this week, get most recent per symbol
-    if len(rows) < 14:
+    async with pool.acquire() as conn:
+        market_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM markets WHERE is_in_universe = true"
+        )
+    if len(rows) < (market_count or 14):
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 f"""

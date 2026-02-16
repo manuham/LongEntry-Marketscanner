@@ -9,8 +9,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_dir: str = "/var/log/longentry"
 
-    # How many markets to activate per week
+    # How many markets to activate per week (indices + commodities)
     max_active_markets: int = 6
+    # How many stocks to activate per week (separate pool)
+    max_active_stocks: int = 4
     min_final_score: float = 40.0
 
     # Anthropic API key for AI-powered outlook
