@@ -1,104 +1,306 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { AlertCircle, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from "lucide-react";
+import {
+  AlertCircle,
+  TrendingUp,
+  TrendingDown,
+  BarChart3,
+  Trophy,
+  Target,
+} from "lucide-react";
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
   ResponsiveContainer,
-  Legend,
+  ReferenceLine,
+  Cell,
 } from "recharts";
-import { getAllAnalyticsHistory, getMarkets, getErrorMessage } from "@/lib/api";
+import { getResults, getMarkets, getErrorMessage } from "@/lib/api";
 import type * as Types from "@/lib/types";
 
-const WEEK_OPTIONS = [
-  { label: "4W", value: 4 },
-  { label: "8W", value: 8 },
-  { label: "12W", value: 12 },
-  { label: "26W", value: 26 },
-  { label: "52W", value: 52 },
-];
+/* ─── Constants ───────────────────────────────────────────────────────── */
 
-const CATEGORY_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  index: { label: "Indices", color: "#3b82f6", bgColor: "rgba(59, 130, 246, 0.1)" },
-  commodity: { label: "Commodities", color: "#f59e0b", bgColor: "rgba(245, 158, 11, 0.1)" },
-  stock: { label: "Stocks", color: "#8b5cf6", bgColor: "rgba(139, 92, 246, 0.1)" },
+const CATEGORY_CONFIG: Record<
+  string,
+  { label: string; color: string; bgColor: string }
+> = {
+  index: {
+    label: "Indices",
+    color: "#3b82f6",
+    bgColor: "rgba(59, 130, 246, 0.1)",
+  },
+  commodity: {
+    label: "Commodities",
+    color: "#f59e0b",
+    bgColor: "rgba(245, 158, 11, 0.1)",
+  },
+  stock: {
+    label: "Stocks",
+    color: "#8b5cf6",
+    bgColor: "rgba(139, 92, 246, 0.1)",
+  },
 };
 
-// Distinct colors per symbol within each category
-const INDEX_COLORS = ["#3b82f6", "#60a5fa", "#2563eb", "#1d4ed8", "#93c5fd", "#1e40af", "#6366f1", "#818cf8", "#4f46e5", "#a5b4fc", "#4338ca"];
-const COMMODITY_COLORS = ["#f59e0b", "#fbbf24", "#d97706", "#b45309"];
-const STOCK_COLORS = ["#8b5cf6", "#a78bfa", "#7c3aed", "#6d28d9", "#c084fc", "#5b21b6", "#ddd6fe", "#9333ea", "#7e22ce", "#a855f7", "#e879f9", "#d946ef", "#c026d3", "#a21caf", "#9333ea", "#7e22ce", "#6b21a8", "#581c87", "#4c1d95", "#a78bfa", "#c4b5fd", "#ddd6fe", "#ede9fe"];
+// Distinct colors for each market
+const SYMBOL_COLORS: Record<string, string> = {
+  // Indices — blues/teals
+  US30: "#3b82f6",
+  US100: "#06b6d4",
+  US500: "#2563eb",
+  GER40: "#0ea5e9",
+  UK100: "#6366f1",
+  JPN225: "#818cf8",
+  AUS200: "#38bdf8",
+  // Commodities — amber/orange
+  XAUUSD: "#f59e0b",
+  XAGUSD: "#d97706",
+  USOIL: "#ea580c",
+  UKOIL: "#f97316",
+  // Stocks — purple/pink
+  AAPL: "#8b5cf6",
+  MSFT: "#a855f7",
+  TSLA: "#d946ef",
+  NVDA: "#c084fc",
+  AMZN: "#e879f9",
+  GOOGL: "#7c3aed",
+  META: "#a78bfa",
+};
 
-function getSymbolColor(symbol: string, category: string, indexInCategory: number): string {
-  if (category === "index") return INDEX_COLORS[indexInCategory % INDEX_COLORS.length];
-  if (category === "commodity") return COMMODITY_COLORS[indexInCategory % COMMODITY_COLORS.length];
-  return STOCK_COLORS[indexInCategory % STOCK_COLORS.length];
+function getColor(symbol: string): string {
+  return SYMBOL_COLORS[symbol] || "#64748b";
 }
 
-export default function HistoryPage() {
-  const [weeks, setWeeks] = useState(12);
-  const [history, setHistory] = useState<Types.HistoryPoint[]>([]);
+/* ─── Types ───────────────────────────────────────────────────────────── */
+
+interface EquityPoint {
+  week: string; // ISO date
+  [symbol: string]: number | string; // cumulative P&L per symbol
+}
+
+interface SymbolStats {
+  symbol: string;
+  category: string;
+  totalPnl: number;
+  totalTrades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  weeksActive: number;
+  bestWeek: number;
+  worstWeek: number;
+}
+
+/* ─── Main Page ───────────────────────────────────────────────────────── */
+
+export default function PerformancePage() {
+  const [results, setResults] = useState<Types.WeeklyResult[]>([]);
   const [markets, setMarkets] = useState<Types.Market[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"trends" | "ranks" | "parameters">("trends");
-  const [activeCategories, setActiveCategories] = useState<Set<string>>(new Set(["index"]));
+  const [activeCategories, setActiveCategories] = useState<Set<string>>(
+    new Set(["index", "commodity", "stock"])
+  );
+  const [activeTab, setActiveTab] = useState<
+    "equity" | "weekly" | "breakdown"
+  >("equity");
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setError(null);
-        const [historyData, marketsData] = await Promise.all([
-          getAllAnalyticsHistory(weeks),
+        const [resultsData, marketsData] = await Promise.all([
+          getResults(),
           getMarkets(),
         ]);
-        setHistory(historyData);
+        setResults(resultsData);
         setMarkets(marketsData);
-        setLoading(false);
       } catch (err) {
         setError(getErrorMessage(err));
+      } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, [weeks]);
+  }, []);
 
-  // Build category lookup from markets
+  // Category lookup
   const categoryMap = useMemo(() => {
     const map: Record<string, string> = {};
-    markets.forEach((m) => { map[m.symbol] = m.category; });
+    markets.forEach((m) => {
+      map[m.symbol] = m.category;
+    });
     return map;
   }, [markets]);
 
-  // Filter history by active categories
-  const filteredHistory = useMemo(() => {
-    return history.filter((h) => activeCategories.has(categoryMap[h.symbol] ?? ""));
-  }, [history, activeCategories, categoryMap]);
+  // Get all symbols from results that match active categories
+  const allSymbols = useMemo(() => {
+    const symbolSet = new Set<string>();
+    results.forEach((week) => {
+      week.results.forEach((r) => {
+        if (activeCategories.has(categoryMap[r.symbol] ?? "")) {
+          symbolSet.add(r.symbol);
+        }
+      });
+    });
+    return Array.from(symbolSet).sort();
+  }, [results, activeCategories, categoryMap]);
 
-  // Filtered symbols
-  const filteredSymbols = useMemo(() => {
-    return Array.from(new Set(filteredHistory.map((h) => h.symbol))).sort();
-  }, [filteredHistory]);
+  // Build equity curve data: cumulative P&L per symbol over time
+  const equityData = useMemo(() => {
+    // Sort weeks oldest first
+    const sortedWeeks = [...results].sort(
+      (a, b) =>
+        new Date(a.week_start).getTime() - new Date(b.week_start).getTime()
+    );
+
+    const cumulative: Record<string, number> = {};
+    const data: EquityPoint[] = [];
+
+    sortedWeeks.forEach((week) => {
+      const point: EquityPoint = { week: week.week_start };
+
+      week.results.forEach((r) => {
+        if (!activeCategories.has(categoryMap[r.symbol] ?? "")) return;
+        cumulative[r.symbol] =
+          (cumulative[r.symbol] || 0) + r.total_pnl_percent;
+        point[r.symbol] = Math.round(cumulative[r.symbol] * 100) / 100;
+      });
+
+      // Also compute total portfolio
+      let total = 0;
+      for (const sym of allSymbols) {
+        total += cumulative[sym] || 0;
+      }
+      point["_total"] = Math.round(total * 100) / 100;
+
+      data.push(point);
+    });
+
+    return data;
+  }, [results, activeCategories, categoryMap, allSymbols]);
+
+  // Weekly bar chart data
+  const weeklyBarData = useMemo(() => {
+    const sortedWeeks = [...results].sort(
+      (a, b) =>
+        new Date(a.week_start).getTime() - new Date(b.week_start).getTime()
+    );
+
+    return sortedWeeks.map((week) => {
+      let pnl = 0;
+      let trades = 0;
+      let wins = 0;
+      week.results.forEach((r) => {
+        if (!activeCategories.has(categoryMap[r.symbol] ?? "")) return;
+        pnl += r.total_pnl_percent;
+        trades += r.trades_taken;
+        wins += r.wins;
+      });
+      return {
+        week: week.week_start,
+        pnl: Math.round(pnl * 100) / 100,
+        trades,
+        wins,
+        winRate: trades > 0 ? Math.round((wins / trades) * 100) : 0,
+      };
+    });
+  }, [results, activeCategories, categoryMap]);
+
+  // Per-symbol stats
+  const symbolStats = useMemo(() => {
+    const stats: Record<string, SymbolStats> = {};
+
+    results.forEach((week) => {
+      week.results.forEach((r) => {
+        const cat = categoryMap[r.symbol] ?? "";
+        if (!activeCategories.has(cat)) return;
+
+        if (!stats[r.symbol]) {
+          stats[r.symbol] = {
+            symbol: r.symbol,
+            category: cat,
+            totalPnl: 0,
+            totalTrades: 0,
+            wins: 0,
+            losses: 0,
+            winRate: 0,
+            weeksActive: 0,
+            bestWeek: -Infinity,
+            worstWeek: Infinity,
+          };
+        }
+
+        const s = stats[r.symbol];
+        s.totalPnl += r.total_pnl_percent;
+        s.totalTrades += r.trades_taken;
+        s.wins += r.wins;
+        s.losses += r.losses;
+        s.weeksActive++;
+        if (r.total_pnl_percent > s.bestWeek) s.bestWeek = r.total_pnl_percent;
+        if (r.total_pnl_percent < s.worstWeek)
+          s.worstWeek = r.total_pnl_percent;
+      });
+    });
+
+    // Compute win rates and round
+    Object.values(stats).forEach((s) => {
+      s.totalPnl = Math.round(s.totalPnl * 100) / 100;
+      s.winRate =
+        s.totalTrades > 0
+          ? Math.round((s.wins / s.totalTrades) * 100)
+          : 0;
+      if (s.bestWeek === -Infinity) s.bestWeek = 0;
+      if (s.worstWeek === Infinity) s.worstWeek = 0;
+      s.bestWeek = Math.round(s.bestWeek * 100) / 100;
+      s.worstWeek = Math.round(s.worstWeek * 100) / 100;
+    });
+
+    return Object.values(stats).sort((a, b) => b.totalPnl - a.totalPnl);
+  }, [results, activeCategories, categoryMap]);
+
+  // Summary totals
+  const summary = useMemo(() => {
+    const totalPnl = symbolStats.reduce((sum, s) => sum + s.totalPnl, 0);
+    const totalTrades = symbolStats.reduce((sum, s) => sum + s.totalTrades, 0);
+    const totalWins = symbolStats.reduce((sum, s) => sum + s.wins, 0);
+    const best = symbolStats[0];
+    const worst = symbolStats[symbolStats.length - 1];
+    return {
+      totalPnl: Math.round(totalPnl * 100) / 100,
+      totalTrades,
+      winRate:
+        totalTrades > 0 ? Math.round((totalWins / totalTrades) * 100) : 0,
+      bestMarket: best?.symbol ?? "—",
+      bestMarketPnl: best?.totalPnl ?? 0,
+      worstMarket: worst?.symbol ?? "—",
+      worstMarketPnl: worst?.totalPnl ?? 0,
+      activeSymbols: symbolStats.length,
+      weeksTracked: results.length,
+    };
+  }, [symbolStats, results]);
 
   const toggleCategory = (cat: string) => {
     const updated = new Set(activeCategories);
     if (updated.has(cat)) {
-      if (updated.size > 1) updated.delete(cat); // Keep at least one active
+      if (updated.size > 1) updated.delete(cat);
     } else {
       updated.add(cat);
     }
     setActiveCategories(updated);
   };
 
-  // Count per category
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { index: 0, commodity: 0, stock: 0 };
-    markets.forEach((m) => { counts[m.category] = (counts[m.category] || 0) + 1; });
+    markets.forEach((m) => {
+      counts[m.category] = (counts[m.category] || 0) + 1;
+    });
     return counts;
   }, [markets]);
 
@@ -106,181 +308,185 @@ export default function HistoryPage() {
     return (
       <div className="min-h-screen px-6 lg:px-10 py-8">
         <div style={{ color: "var(--text-heading)" }}>
-          <h1 className="text-2xl font-bold tracking-tight mb-8">Analysis History</h1>
+          <h1 className="text-2xl font-bold tracking-tight mb-8 text-center">
+            Performance
+          </h1>
           <SkeletonLoading />
         </div>
       </div>
     );
   }
 
+  const hasData = results.length > 0;
+
   return (
     <div className="min-h-screen px-6 lg:px-10 py-8">
-      <div>
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1
-            className="text-2xl font-bold tracking-tight mb-2"
-            style={{ color: "var(--text-heading)" }}
-          >
-            Analysis History
-          </h1>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            Track how scores, rankings, and parameters evolve over time
-          </p>
-        </div>
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h1
+          className="text-2xl font-bold tracking-tight mb-2"
+          style={{ color: "var(--text-heading)" }}
+        >
+          Performance
+        </h1>
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+          Real trading P&L across all markets
+          {summary.weeksTracked > 0 && (
+            <span>
+              {" "}
+              · {summary.weeksTracked} week
+              {summary.weeksTracked !== 1 ? "s" : ""} tracked
+            </span>
+          )}
+        </p>
+      </div>
 
-        {/* Error Banner */}
-        {error && (
-          <div
-            className="mb-6 p-4 rounded-xl flex items-start space-x-3"
-            style={{
-              backgroundColor: "rgba(239, 68, 68, 0.08)",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
-            }}
-          >
-            <AlertCircle size={18} style={{ color: "var(--accent-red)", flexShrink: 0, marginTop: "2px" }} />
-            <div>
-              <p className="font-medium text-sm" style={{ color: "var(--accent-red)" }}>Error loading history</p>
-              <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>{error}</p>
+      {/* Error */}
+      {error && <ErrorBanner message={error} />}
+
+      {!hasData && !error ? (
+        <EmptyState />
+      ) : (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <SummaryCard
+              label="Total P&L"
+              value={`${summary.totalPnl >= 0 ? "+" : ""}${summary.totalPnl}%`}
+              icon={
+                summary.totalPnl >= 0 ? (
+                  <TrendingUp size={18} />
+                ) : (
+                  <TrendingDown size={18} />
+                )
+              }
+              color={summary.totalPnl >= 0 ? "#22c55e" : "#ef4444"}
+            />
+            <SummaryCard
+              label="Win Rate"
+              value={`${summary.winRate}%`}
+              icon={<Target size={18} />}
+              color={
+                summary.winRate >= 50
+                  ? "#22c55e"
+                  : summary.winRate >= 40
+                    ? "#f59e0b"
+                    : "#ef4444"
+              }
+              subtitle={`${summary.totalTrades} trades`}
+            />
+            <SummaryCard
+              label="Best Market"
+              value={summary.bestMarket}
+              icon={<Trophy size={18} />}
+              color="#22c55e"
+              subtitle={`+${summary.bestMarketPnl}%`}
+            />
+            <SummaryCard
+              label="Worst Market"
+              value={summary.worstMarket}
+              icon={<BarChart3 size={18} />}
+              color="#ef4444"
+              subtitle={`${summary.worstMarketPnl}%`}
+            />
+          </div>
+
+          {/* Category Toggles + Tabs */}
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            {/* Categories */}
+            <div className="flex gap-2">
+              {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                <button
+                  key={key}
+                  onClick={() => toggleCategory(key)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                  style={{
+                    backgroundColor: activeCategories.has(key)
+                      ? config.bgColor
+                      : "var(--bg-surface)",
+                    color: activeCategories.has(key)
+                      ? config.color
+                      : "var(--text-faint)",
+                    border: `1.5px solid ${activeCategories.has(key) ? config.color + "40" : "var(--border-solid)"}`,
+                  }}
+                >
+                  {config.label}
+                  <span
+                    className="ml-1.5 text-xs font-normal"
+                    style={{ opacity: 0.7 }}
+                  >
+                    ({categoryCounts[key] || 0})
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Tabs */}
+            <div
+              className="flex p-0.5 rounded-lg"
+              style={{ backgroundColor: "var(--bg-surface)" }}
+            >
+              {(
+                [
+                  { id: "equity", label: "Equity Curve" },
+                  { id: "weekly", label: "Weekly P&L" },
+                  { id: "breakdown", label: "Per Market" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className="px-4 py-1.5 rounded-md text-xs font-medium transition-all"
+                  style={{
+                    backgroundColor:
+                      activeTab === tab.id ? "var(--bg-card)" : "transparent",
+                    color:
+                      activeTab === tab.id
+                        ? "var(--text-heading)"
+                        : "var(--text-faint)",
+                    boxShadow:
+                      activeTab === tab.id
+                        ? "0 1px 2px rgba(0,0,0,0.1)"
+                        : "none",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
           </div>
-        )}
 
-        {/* Controls Row: Categories + Week Range */}
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-          {/* Category Toggles */}
-          <div className="flex gap-2">
-            {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
-              <button
-                key={key}
-                onClick={() => toggleCategory(key)}
-                className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-                style={{
-                  backgroundColor: activeCategories.has(key) ? config.bgColor : "var(--bg-surface)",
-                  color: activeCategories.has(key) ? config.color : "var(--text-faint)",
-                  border: `1.5px solid ${activeCategories.has(key) ? config.color + "40" : "var(--border-solid)"}`,
-                }}
-              >
-                {config.label}
-                <span
-                  className="ml-1.5 text-xs font-normal"
-                  style={{ opacity: 0.7 }}
-                >
-                  ({categoryCounts[key] || 0})
-                </span>
-              </button>
-            ))}
-          </div>
-
-          {/* Week Range */}
-          <div
-            className="flex p-0.5 rounded-lg"
-            style={{ backgroundColor: "var(--bg-surface)" }}
-          >
-            {WEEK_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                onClick={() => setWeeks(option.value)}
-                className="px-3 py-1.5 rounded-md text-xs font-medium transition-all"
-                style={{
-                  backgroundColor: weeks === option.value ? "var(--bg-card)" : "transparent",
-                  color: weeks === option.value ? "var(--text-heading)" : "var(--text-faint)",
-                  boxShadow: weeks === option.value ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
-                }}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div
-          className="flex gap-0 mb-6 border-b"
-          style={{ borderColor: "var(--border-solid)" }}
-        >
-          {[
-            { id: "trends", label: "Score Trends" },
-            { id: "ranks", label: "Rank Table" },
-            { id: "parameters", label: "Parameters" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as typeof activeTab)}
-              className="px-4 py-3 text-sm font-medium transition-colors relative"
-              style={{
-                color: activeTab === tab.id ? "var(--accent-blue)" : "var(--text-muted)",
-              }}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <div
-                  className="absolute bottom-0 left-0 right-0 h-0.5"
-                  style={{ backgroundColor: "var(--accent-blue)" }}
-                />
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === "trends" && (
-          <ScoreTrendsTab
-            history={filteredHistory}
-            symbols={filteredSymbols}
-            categoryMap={categoryMap}
-          />
-        )}
-        {activeTab === "ranks" && (
-          <RankTableTab
-            history={filteredHistory}
-            symbols={filteredSymbols}
-            categoryMap={categoryMap}
-          />
-        )}
-        {activeTab === "parameters" && (
-          <ParameterChangesTab
-            history={filteredHistory}
-            symbols={filteredSymbols}
-          />
-        )}
-      </div>
+          {/* Tab Content */}
+          {activeTab === "equity" && (
+            <EquityCurveTab
+              equityData={equityData}
+              symbols={allSymbols}
+              categoryMap={categoryMap}
+            />
+          )}
+          {activeTab === "weekly" && (
+            <WeeklyPnlTab data={weeklyBarData} />
+          )}
+          {activeTab === "breakdown" && (
+            <MarketBreakdownTab stats={symbolStats} />
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-/* ─── Score Trends Tab ──────────────────────────────────────────────────── */
+/* ─── Equity Curve Tab ────────────────────────────────────────────────── */
 
-interface ScoreTrendsTabProps {
-  history: Types.HistoryPoint[];
+interface EquityCurveTabProps {
+  equityData: EquityPoint[];
   symbols: string[];
   categoryMap: Record<string, string>;
 }
 
-function ScoreTrendsTab({ history, symbols, categoryMap }: ScoreTrendsTabProps) {
+function EquityCurveTab({ equityData, symbols, categoryMap }: EquityCurveTabProps) {
+  const [showTotal, setShowTotal] = useState(true);
   const [hiddenSymbols, setHiddenSymbols] = useState<Set<string>>(new Set());
-
-  const weekSet = new Set(history.map((h) => h.week_start));
-  const sortedWeeks = Array.from(weekSet).sort();
-
-  const chartData = sortedWeeks.map((week) => {
-    const point: Record<string, unknown> = { week_start: week };
-    history
-      .filter((h) => h.week_start === week)
-      .forEach((h) => {
-        point[h.symbol] = h.final_score ?? 0;
-      });
-    return point;
-  });
-
-  // Build index within category for color assignment
-  const categoryIndex: Record<string, number> = {};
-  const categoryCounters: Record<string, number> = {};
-  symbols.forEach((s) => {
-    const cat = categoryMap[s] ?? "index";
-    if (!(cat in categoryCounters)) categoryCounters[cat] = 0;
-    categoryIndex[s] = categoryCounters[cat]++;
-  });
 
   const toggleSymbol = (symbol: string) => {
     const updated = new Set(hiddenSymbols);
@@ -296,7 +502,7 @@ function ScoreTrendsTab({ history, symbols, categoryMap }: ScoreTrendsTabProps) 
 
   return (
     <div>
-      {/* Symbol Legend */}
+      {/* Legend */}
       <div
         className="p-4 rounded-xl mb-6"
         style={{
@@ -305,21 +511,44 @@ function ScoreTrendsTab({ history, symbols, categoryMap }: ScoreTrendsTabProps) 
         }}
       >
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-medium" style={{ color: "var(--text-faint)" }}>
-            Click to show/hide · {visibleSymbols.length} of {symbols.length} visible
+          <p
+            className="text-xs font-medium"
+            style={{ color: "var(--text-faint)" }}
+          >
+            Click to show/hide · {visibleSymbols.length} of {symbols.length}{" "}
+            visible
           </p>
           <div className="flex gap-2">
             <button
+              onClick={() => setShowTotal(!showTotal)}
+              className="text-[10px] font-medium px-2.5 py-1 rounded-md"
+              style={{
+                color: showTotal ? "#22c55e" : "var(--text-muted)",
+                backgroundColor: showTotal
+                  ? "rgba(34, 197, 94, 0.1)"
+                  : "var(--bg-surface)",
+                border: `1px solid ${showTotal ? "rgba(34, 197, 94, 0.3)" : "var(--border-solid)"}`,
+              }}
+            >
+              Portfolio Total
+            </button>
+            <button
               onClick={() => setHiddenSymbols(new Set())}
               className="text-[10px] font-medium px-2 py-1 rounded-md"
-              style={{ color: "var(--accent-blue)", backgroundColor: "rgba(59, 130, 246, 0.08)" }}
+              style={{
+                color: "var(--accent-blue)",
+                backgroundColor: "rgba(59, 130, 246, 0.08)",
+              }}
             >
               Show All
             </button>
             <button
               onClick={() => setHiddenSymbols(new Set(symbols))}
               className="text-[10px] font-medium px-2 py-1 rounded-md"
-              style={{ color: "var(--text-muted)", backgroundColor: "var(--bg-surface)" }}
+              style={{
+                color: "var(--text-muted)",
+                backgroundColor: "var(--bg-surface)",
+              }}
             >
               Hide All
             </button>
@@ -327,8 +556,7 @@ function ScoreTrendsTab({ history, symbols, categoryMap }: ScoreTrendsTabProps) 
         </div>
         <div className="flex flex-wrap gap-1.5">
           {symbols.map((symbol) => {
-            const cat = categoryMap[symbol] ?? "index";
-            const color = getSymbolColor(symbol, cat, categoryIndex[symbol]);
+            const color = getColor(symbol);
             const isVisible = !hiddenSymbols.has(symbol);
             return (
               <button
@@ -357,271 +585,597 @@ function ScoreTrendsTab({ history, symbols, categoryMap }: ScoreTrendsTabProps) 
           border: "1px solid var(--border-solid)",
         }}
       >
-        <ResponsiveContainer width="100%" height={450}>
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
-            <XAxis
-              dataKey="week_start"
-              stroke="var(--text-faint)"
-              tick={{ fontSize: 11 }}
-              tickFormatter={(value: string) => {
-                const d = new Date(value);
-                return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-              }}
-            />
-            <YAxis
-              stroke="var(--text-faint)"
-              tick={{ fontSize: 11 }}
-              domain={[0, 100]}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "var(--bg-surface)",
-                border: "1px solid var(--border-solid)",
-                borderRadius: "0.75rem",
-                color: "var(--text-body)",
-                fontSize: "12px",
-              }}
-              formatter={(value: any, name?: string) => {
-                if (typeof value === "number") {
-                  return [value.toFixed(1), name ?? ""] as [string, string];
-                }
-                return [value, name ?? ""] as [string, string];
-              }}
-              labelFormatter={(label: any) => {
-                const d = new Date(label);
-                return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-              }}
-            />
-            {visibleSymbols.map((symbol) => {
-              const cat = categoryMap[symbol] ?? "index";
-              const color = getSymbolColor(symbol, cat, categoryIndex[symbol]);
-              return (
+        {equityData.length === 0 ? (
+          <div
+            className="h-96 flex items-center justify-center"
+            style={{ color: "var(--text-faint)" }}
+          >
+            No performance data yet
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={480}>
+            <LineChart data={equityData}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="var(--border)"
+                opacity={0.3}
+              />
+              <XAxis
+                dataKey="week"
+                stroke="var(--text-faint)"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(value: string) => {
+                  const d = new Date(value);
+                  return d.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                }}
+              />
+              <YAxis
+                stroke="var(--text-faint)"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v: number) => `${v}%`}
+              />
+              <ReferenceLine y={0} stroke="var(--text-faint)" strokeDasharray="3 3" opacity={0.5} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-solid)",
+                  borderRadius: "0.75rem",
+                  color: "var(--text-body)",
+                  fontSize: "12px",
+                }}
+                formatter={(value: any, name?: string) => {
+                  const label =
+                    name === "_total" ? "Portfolio" : (name ?? "");
+                  if (typeof value === "number") {
+                    return [
+                      `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`,
+                      label,
+                    ] as [string, string];
+                  }
+                  return [value, label] as [string, string];
+                }}
+                labelFormatter={(label: any) => {
+                  const d = new Date(label);
+                  return d.toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  });
+                }}
+              />
+
+              {/* Individual symbol lines */}
+              {visibleSymbols.map((symbol) => (
                 <Line
                   key={symbol}
                   type="monotone"
                   dataKey={symbol}
-                  stroke={color}
-                  strokeWidth={2}
+                  stroke={getColor(symbol)}
+                  strokeWidth={1.5}
                   dot={false}
                   connectNulls
                 />
-              );
-            })}
-          </LineChart>
-        </ResponsiveContainer>
+              ))}
+
+              {/* Portfolio total line */}
+              {showTotal && (
+                <Line
+                  type="monotone"
+                  dataKey="_total"
+                  stroke="#22c55e"
+                  strokeWidth={3}
+                  dot={false}
+                  strokeDasharray="6 3"
+                  connectNulls
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
 }
 
-/* ─── Rank Table Tab ─────────────────────────────────────────────────── */
+/* ─── Weekly P&L Bar Chart Tab ────────────────────────────────────────── */
 
-interface RankTableTabProps {
-  history: Types.HistoryPoint[];
-  symbols: string[];
-  categoryMap: Record<string, string>;
+interface WeeklyBarData {
+  week: string;
+  pnl: number;
+  trades: number;
+  wins: number;
+  winRate: number;
 }
 
-function RankTableTab({ history, symbols, categoryMap }: RankTableTabProps) {
-  const weeks = Array.from(new Set(history.map((h) => h.week_start))).sort();
+function WeeklyPnlTab({ data }: { data: WeeklyBarData[] }) {
+  return (
+    <div>
+      {/* Bar Chart */}
+      <div
+        className="p-6 rounded-xl mb-6"
+        style={{
+          backgroundColor: "var(--bg-card)",
+          border: "1px solid var(--border-solid)",
+        }}
+      >
+        <h3
+          className="text-sm font-semibold mb-4"
+          style={{ color: "var(--text-heading)" }}
+        >
+          Weekly P&L
+        </h3>
+        {data.length === 0 ? (
+          <div
+            className="h-80 flex items-center justify-center"
+            style={{ color: "var(--text-faint)" }}
+          >
+            No data
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={380}>
+            <BarChart data={data}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="var(--border)"
+                opacity={0.3}
+              />
+              <XAxis
+                dataKey="week"
+                stroke="var(--text-faint)"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(value: string) => {
+                  const d = new Date(value);
+                  return d.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  });
+                }}
+              />
+              <YAxis
+                stroke="var(--text-faint)"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v: number) => `${v}%`}
+              />
+              <ReferenceLine y={0} stroke="var(--text-faint)" strokeDasharray="3 3" opacity={0.5} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-solid)",
+                  borderRadius: "0.75rem",
+                  color: "var(--text-body)",
+                  fontSize: "12px",
+                }}
+                formatter={(value: any, name?: string) => {
+                  if (name === "pnl") {
+                    return [
+                      `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(2)}%`,
+                      "P&L",
+                    ] as [string, string];
+                  }
+                  return [value, name ?? ""] as [string, string];
+                }}
+                labelFormatter={(label: any) => {
+                  const d = new Date(label);
+                  return `Week of ${d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`;
+                }}
+              />
+              <Bar dataKey="pnl" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                {data.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.pnl >= 0 ? "#22c55e" : "#ef4444"}
+                    fillOpacity={0.8}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
 
-  const historyMap = new Map<string, Types.HistoryPoint>();
-  history.forEach((h) => {
-    historyMap.set(`${h.symbol}|${h.week_start}`, h);
-  });
+      {/* Weekly table */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{
+          backgroundColor: "var(--bg-card)",
+          border: "1px solid var(--border-solid)",
+        }}
+      >
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border-solid)" }}>
+              {["Week", "P&L", "Trades", "Win Rate"].map((h) => (
+                <th
+                  key={h}
+                  className="text-left p-3 font-semibold text-xs uppercase tracking-wider"
+                  style={{ color: "var(--text-faint)" }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[...data].reverse().map((row) => (
+              <tr
+                key={row.week}
+                style={{ borderBottom: "1px solid var(--border-solid)" }}
+              >
+                <td className="p-3" style={{ color: "var(--text-body)" }}>
+                  {new Date(row.week).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </td>
+                <td
+                  className="p-3 font-bold"
+                  style={{
+                    color: row.pnl >= 0 ? "#22c55e" : "#ef4444",
+                  }}
+                >
+                  {row.pnl >= 0 ? "+" : ""}
+                  {row.pnl.toFixed(2)}%
+                </td>
+                <td className="p-3" style={{ color: "var(--text-body)" }}>
+                  {row.trades}
+                </td>
+                <td className="p-3" style={{ color: "var(--text-body)" }}>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
+                    style={{
+                      backgroundColor:
+                        row.winRate >= 50
+                          ? "rgba(34, 197, 94, 0.1)"
+                          : row.winRate >= 40
+                            ? "rgba(245, 158, 11, 0.1)"
+                            : "rgba(239, 68, 68, 0.1)",
+                      color:
+                        row.winRate >= 50
+                          ? "#22c55e"
+                          : row.winRate >= 40
+                            ? "#f59e0b"
+                            : "#ef4444",
+                    }}
+                  >
+                    {row.winRate}%
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
-  const getRankColor = (rank: number | null | undefined) => {
-    if (rank === null || rank === undefined) return { bg: "var(--bg-surface)", text: "var(--text-faint)" };
-    if (rank <= 3) return { bg: "rgba(245, 158, 11, 0.15)", text: "#f59e0b" };
-    if (rank <= 6) return { bg: "rgba(34, 197, 94, 0.12)", text: "#22c55e" };
-    return { bg: "var(--bg-surface)", text: "var(--text-muted)" };
-  };
+/* ─── Market Breakdown Tab ────────────────────────────────────────────── */
 
+function MarketBreakdownTab({ stats }: { stats: SymbolStats[] }) {
+  return (
+    <div>
+      {/* Per-market P&L bar visualization */}
+      <div
+        className="p-6 rounded-xl mb-6"
+        style={{
+          backgroundColor: "var(--bg-card)",
+          border: "1px solid var(--border-solid)",
+        }}
+      >
+        <h3
+          className="text-sm font-semibold mb-4"
+          style={{ color: "var(--text-heading)" }}
+        >
+          Cumulative P&L by Market
+        </h3>
+        {stats.length === 0 ? (
+          <div
+            className="h-40 flex items-center justify-center"
+            style={{ color: "var(--text-faint)" }}
+          >
+            No data
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(300, stats.length * 40)}>
+            <BarChart data={stats} layout="vertical">
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="var(--border)"
+                opacity={0.3}
+                horizontal={false}
+              />
+              <XAxis
+                type="number"
+                stroke="var(--text-faint)"
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v: number) => `${v}%`}
+              />
+              <YAxis
+                type="category"
+                dataKey="symbol"
+                stroke="var(--text-faint)"
+                tick={{ fontSize: 12, fontWeight: 600 }}
+                width={80}
+              />
+              <ReferenceLine x={0} stroke="var(--text-faint)" strokeDasharray="3 3" opacity={0.5} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "var(--bg-surface)",
+                  border: "1px solid var(--border-solid)",
+                  borderRadius: "0.75rem",
+                  color: "var(--text-body)",
+                  fontSize: "12px",
+                }}
+                formatter={(value: any) => {
+                  return [
+                    `${Number(value) >= 0 ? "+" : ""}${Number(value).toFixed(2)}%`,
+                    "Total P&L",
+                  ] as [string, string];
+                }}
+              />
+              <Bar dataKey="totalPnl" radius={[0, 4, 4, 0]} maxBarSize={28}>
+                {stats.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.totalPnl >= 0 ? "#22c55e" : "#ef4444"}
+                    fillOpacity={0.75}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Detailed table */}
+      <div
+        className="rounded-xl overflow-x-auto"
+        style={{
+          backgroundColor: "var(--bg-card)",
+          border: "1px solid var(--border-solid)",
+        }}
+      >
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border-solid)" }}>
+              {[
+                "Market",
+                "Total P&L",
+                "Trades",
+                "Win Rate",
+                "Best Week",
+                "Worst Week",
+                "Weeks",
+              ].map((h) => (
+                <th
+                  key={h}
+                  className="text-left p-3 font-semibold text-xs uppercase tracking-wider"
+                  style={{ color: "var(--text-faint)" }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((s) => (
+              <tr
+                key={s.symbol}
+                style={{ borderBottom: "1px solid var(--border-solid)" }}
+              >
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: getColor(s.symbol) }}
+                    />
+                    <span
+                      className="font-bold text-sm"
+                      style={{ color: "var(--text-heading)" }}
+                    >
+                      {s.symbol}
+                    </span>
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded-md"
+                      style={{
+                        color:
+                          CATEGORY_CONFIG[s.category]?.color ??
+                          "var(--text-muted)",
+                        backgroundColor:
+                          CATEGORY_CONFIG[s.category]?.bgColor ??
+                          "var(--bg-surface)",
+                      }}
+                    >
+                      {CATEGORY_CONFIG[s.category]?.label ?? s.category}
+                    </span>
+                  </div>
+                </td>
+                <td
+                  className="p-3 font-bold"
+                  style={{
+                    color: s.totalPnl >= 0 ? "#22c55e" : "#ef4444",
+                  }}
+                >
+                  {s.totalPnl >= 0 ? "+" : ""}
+                  {s.totalPnl.toFixed(2)}%
+                </td>
+                <td className="p-3" style={{ color: "var(--text-body)" }}>
+                  {s.totalTrades}
+                  <span
+                    className="text-xs ml-1"
+                    style={{ color: "var(--text-faint)" }}
+                  >
+                    ({s.wins}W / {s.losses}L)
+                  </span>
+                </td>
+                <td className="p-3">
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
+                    style={{
+                      backgroundColor:
+                        s.winRate >= 50
+                          ? "rgba(34, 197, 94, 0.1)"
+                          : s.winRate >= 40
+                            ? "rgba(245, 158, 11, 0.1)"
+                            : "rgba(239, 68, 68, 0.1)",
+                      color:
+                        s.winRate >= 50
+                          ? "#22c55e"
+                          : s.winRate >= 40
+                            ? "#f59e0b"
+                            : "#ef4444",
+                    }}
+                  >
+                    {s.winRate}%
+                  </span>
+                </td>
+                <td
+                  className="p-3 text-sm"
+                  style={{ color: "#22c55e" }}
+                >
+                  +{s.bestWeek.toFixed(2)}%
+                </td>
+                <td
+                  className="p-3 text-sm"
+                  style={{ color: "#ef4444" }}
+                >
+                  {s.worstWeek.toFixed(2)}%
+                </td>
+                <td className="p-3" style={{ color: "var(--text-body)" }}>
+                  {s.weeksActive}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Shared Components ───────────────────────────────────────────────── */
+
+function SummaryCard({
+  label,
+  value,
+  icon,
+  color,
+  subtitle,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  color: string;
+  subtitle?: string;
+}) {
   return (
     <div
-      className="rounded-xl overflow-x-auto"
+      className="p-4 rounded-xl"
       style={{
         backgroundColor: "var(--bg-card)",
         border: "1px solid var(--border-solid)",
       }}
     >
-      <table className="w-full text-sm">
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border-solid)" }}>
-            <th
-              className="text-left p-3 font-semibold text-xs uppercase tracking-wider sticky left-0"
-              style={{ color: "var(--text-faint)", backgroundColor: "var(--bg-card)" }}
-            >
-              Symbol
-            </th>
-            {weeks.map((week) => (
-              <th
-                key={week}
-                className="text-center p-3 font-semibold text-xs whitespace-nowrap"
-                style={{ color: "var(--text-faint)" }}
-              >
-                {new Date(week).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {symbols.map((symbol) => (
-            <tr key={symbol} style={{ borderBottom: "1px solid var(--border-solid)" }}>
-              <td
-                className="p-3 font-bold text-xs sticky left-0"
-                style={{ color: "var(--text-heading)", backgroundColor: "var(--bg-card)" }}
-              >
-                {symbol}
-              </td>
-              {weeks.map((week) => {
-                const point = historyMap.get(`${symbol}|${week}`);
-                const rank = point?.rank;
-                const colors = getRankColor(rank);
-
-                return (
-                  <td key={week} className="text-center p-2">
-                    <div
-                      className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-xs font-bold"
-                      style={{
-                        backgroundColor: colors.bg,
-                        color: colors.text,
-                      }}
-                    >
-                      {rank !== null && rank !== undefined ? rank : "—"}
-                    </div>
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="flex items-center gap-2 mb-2">
+        <div style={{ color, opacity: 0.8 }}>{icon}</div>
+        <p
+          className="text-xs font-medium uppercase tracking-wider"
+          style={{ color: "var(--text-faint)" }}
+        >
+          {label}
+        </p>
+      </div>
+      <p className="text-2xl font-bold" style={{ color }}>
+        {value}
+      </p>
+      {subtitle && (
+        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }
 
-/* ─── Parameter Changes Tab ──────────────────────────────────────────── */
-
-interface ParameterChangesTabProps {
-  history: Types.HistoryPoint[];
-  symbols: string[];
-}
-
-function ParameterChangesTab({ history, symbols }: ParameterChangesTabProps) {
-  const [expandedSymbols, setExpandedSymbols] = useState<Set<string>>(new Set());
-
-  const toggleExpanded = (symbol: string) => {
-    const updated = new Set(expandedSymbols);
-    if (updated.has(symbol)) {
-      updated.delete(symbol);
-    } else {
-      updated.add(symbol);
-    }
-    setExpandedSymbols(updated);
-  };
-
+function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="space-y-3">
-      {symbols.map((symbol) => {
-        const symbolHistory = history
-          .filter((h) => h.symbol === symbol)
-          .sort((a, b) => new Date(b.week_start).getTime() - new Date(a.week_start).getTime())
-          .slice(0, 8);
-
-        const isExpanded = expandedSymbols.has(symbol);
-
-        return (
-          <div
-            key={symbol}
-            className="rounded-xl overflow-hidden"
-            style={{ border: "1px solid var(--border-solid)" }}
-          >
-            <button
-              onClick={() => toggleExpanded(symbol)}
-              className="w-full p-3 flex items-center justify-between"
-              style={{
-                backgroundColor: "var(--bg-card)",
-                borderBottom: isExpanded ? "1px solid var(--border-solid)" : "none",
-              }}
-            >
-              <p className="font-bold text-sm" style={{ color: "var(--text-heading)" }}>
-                {symbol}
-              </p>
-              {isExpanded ? (
-                <ChevronUp size={16} style={{ color: "var(--text-muted)" }} />
-              ) : (
-                <ChevronDown size={16} style={{ color: "var(--text-muted)" }} />
-              )}
-            </button>
-
-            {isExpanded && (
-              <div className="p-3" style={{ backgroundColor: "var(--bg-surface)" }}>
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid var(--border-solid)" }}>
-                      {["Week", "Entry Hour", "SL %", "TP %"].map((h) => (
-                        <th key={h} className="text-left p-2 font-medium" style={{ color: "var(--text-faint)" }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {symbolHistory.map((point, idx) => {
-                      const prevPoint = symbolHistory[idx + 1];
-                      const entryChanged = prevPoint && point.opt_entry_hour !== prevPoint.opt_entry_hour;
-                      const slChanged = prevPoint && point.opt_sl_percent !== prevPoint.opt_sl_percent;
-                      const tpChanged = prevPoint && point.opt_tp_percent !== prevPoint.opt_tp_percent;
-
-                      return (
-                        <tr
-                          key={point.week_start}
-                          style={{ borderBottom: "1px solid var(--border-solid)" }}
-                        >
-                          <td className="p-2" style={{ color: "var(--text-body)" }}>
-                            {new Date(point.week_start).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </td>
-                          <td className="p-2" style={{
-                            color: entryChanged ? "var(--accent-amber)" : "var(--text-body)",
-                            fontWeight: entryChanged ? 600 : 400,
-                          }}>
-                            {point.opt_entry_hour ?? "—"}
-                          </td>
-                          <td className="p-2" style={{
-                            color: slChanged ? "var(--accent-amber)" : "var(--text-body)",
-                            fontWeight: slChanged ? 600 : 400,
-                          }}>
-                            {point.opt_sl_percent ? `${point.opt_sl_percent.toFixed(2)}%` : "—"}
-                          </td>
-                          <td className="p-2" style={{
-                            color: tpChanged ? "var(--accent-amber)" : "var(--text-body)",
-                            fontWeight: tpChanged ? 600 : 400,
-                          }}>
-                            {point.opt_tp_percent ? `${point.opt_tp_percent.toFixed(2)}%` : "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div
+      className="mb-6 p-4 rounded-xl flex items-start space-x-3"
+      style={{
+        backgroundColor: "rgba(239, 68, 68, 0.08)",
+        border: "1px solid rgba(239, 68, 68, 0.2)",
+      }}
+    >
+      <AlertCircle
+        size={18}
+        style={{
+          color: "var(--accent-red)",
+          flexShrink: 0,
+          marginTop: "2px",
+        }}
+      />
+      <div>
+        <p
+          className="font-medium text-sm"
+          style={{ color: "var(--accent-red)" }}
+        >
+          Error loading performance data
+        </p>
+        <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+          {message}
+        </p>
+      </div>
     </div>
   );
 }
 
-/* ─── Skeleton ───────────────────────────────────────────────────────── */
+function EmptyState() {
+  return (
+    <div
+      className="p-12 rounded-xl text-center"
+      style={{
+        backgroundColor: "var(--bg-card)",
+        border: "1px solid var(--border-solid)",
+      }}
+    >
+      <BarChart3
+        size={48}
+        style={{ color: "var(--text-faint)", margin: "0 auto 16px" }}
+      />
+      <h3
+        className="text-lg font-semibold mb-2"
+        style={{ color: "var(--text-heading)" }}
+      >
+        No performance data yet
+      </h3>
+      <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+        Performance data will appear once your EAs start reporting weekly
+        results via ResultSender.
+      </p>
+    </div>
+  );
+}
 
 function SkeletonLoading() {
   return (
     <div className="space-y-6">
-      <div className="h-12 rounded-xl animate-pulse" style={{ backgroundColor: "var(--bg-card)" }} />
-      <div className="h-96 rounded-xl animate-pulse" style={{ backgroundColor: "var(--bg-card)" }} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="h-24 rounded-xl animate-pulse"
+            style={{ backgroundColor: "var(--bg-card)" }}
+          />
+        ))}
+      </div>
+      <div
+        className="h-96 rounded-xl animate-pulse"
+        style={{ backgroundColor: "var(--bg-card)" }}
+      />
     </div>
   );
 }

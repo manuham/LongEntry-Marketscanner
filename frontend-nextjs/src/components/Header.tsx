@@ -14,7 +14,7 @@ export default function Header() {
   const navLinks = [
     { href: "/", label: "Markets" },
     { href: "/results", label: "Results" },
-    { href: "/history", label: "History" },
+    { href: "/history", label: "Performance" },
   ];
 
   return (
