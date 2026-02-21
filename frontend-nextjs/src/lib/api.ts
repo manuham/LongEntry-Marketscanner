@@ -498,7 +498,7 @@ export async function getHealth(): Promise<Types.Health> {
 // ============================================================================
 
 export { Types };
-export { APIException: Types } from "./types";
+export { APIException } from "./types";
 
 /**
  * Type guard to check if an error is an APIException
