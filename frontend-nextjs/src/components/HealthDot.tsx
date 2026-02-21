@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useState as useStateRef } from "react";
 
 interface HealthStatus {
   status: "ok" | "warning" | "critical";

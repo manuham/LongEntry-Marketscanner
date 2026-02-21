@@ -116,7 +116,7 @@ async function get<T>(
   return fetchAPI<T>(endpoint, {
     ...options,
     method: "GET",
-    headers: buildHeaders(undefined, options?.headers?.toString?.()),
+    headers: buildHeaders(),
   });
 }
 

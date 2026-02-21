@@ -227,12 +227,9 @@ export default function HeatmapGrid({ heatmapData }: HeatmapGridProps) {
 
           {/* Find min and max for bar chart */}
           {(() => {
-            const minReturn = Math.min(
-              ...heatmapData.entry_hour_returns.map((h) => h.total_return)
-            );
-            const maxReturn = Math.max(
-              ...heatmapData.entry_hour_returns.map((h) => h.total_return)
-            );
+            const returns = heatmapData.entry_hour_returns.map((h) => h.total_return);
+            const minReturn = returns.length > 0 ? Math.min(...returns) : 0;
+            const maxReturn = returns.length > 0 ? Math.max(...returns) : 0;
             const range = maxReturn - minReturn || 1;
 
             return (

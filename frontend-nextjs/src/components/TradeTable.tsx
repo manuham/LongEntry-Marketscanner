@@ -36,13 +36,12 @@ export default function TradeTable({ trades }: TradeTableProps) {
     if (aVal === null || aVal === undefined) aVal = 0;
     if (bVal === null || bVal === undefined) bVal = 0;
 
-    if (typeof aVal === "string") {
-      aVal = aVal.localeCompare(bVal);
+    if (typeof aVal === "string" && typeof bVal === "string") {
+      return sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     } else {
-      aVal = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+      const comparison = aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+      return sortDirection === "asc" ? comparison : -comparison;
     }
-
-    return sortDirection === "asc" ? aVal : -aVal;
   });
 
   const SortHeader = ({

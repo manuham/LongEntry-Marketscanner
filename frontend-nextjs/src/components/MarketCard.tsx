@@ -130,7 +130,7 @@ export default function MarketCard({
                 className="text-2xl font-bold"
                 style={{ color: "var(--text-heading)" }}
               >
-                {market.latest_price.toFixed(2)}
+                {(market.latest_price ?? 0).toFixed(2)}
               </div>
             )}
           </div>

@@ -43,18 +43,18 @@ export default function PerformanceStats({
     const totalTrades = trades.length;
     const winRate =
       totalTrades > 0
-        ? ((winCount / totalTrades) * 100).toFixed(1)
-        : "0.0";
+        ? (winCount / totalTrades) * 100
+        : 0;
 
     // Profit Factor = Gross Profit / Gross Loss
     const profitFactor =
-      grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : "N/A";
+      grossLoss > 0 ? grossProfit / grossLoss : 0;
 
     // Max Drawdown from analytics or calculate from trades
     maxDD = analytics.bt_max_drawdown ?? 0;
 
     return {
-      winRate: parseFloat(winRate),
+      winRate,
       totalPnL,
       profitFactor,
       maxDD,
@@ -82,7 +82,7 @@ export default function PerformanceStats({
     },
     {
       label: "Profit Factor",
-      value: String(stats.profitFactor),
+      value: stats.profitFactor > 0 ? stats.profitFactor.toFixed(2) : "N/A",
       icon: BarChart3,
       subtext: "Gross Profit / Loss",
       color: "var(--accent-blue)",

@@ -162,7 +162,7 @@ export default function AIInsightPanel({ analysis }: AIInsightPanelProps) {
               </h4>
             </div>
             <div className="space-y-2">
-              {analysis.key_levels?.resistance.length > 0 && (
+              {(analysis.key_levels?.resistance?.length ?? 0) > 0 && (
                 <div className="p-3 rounded" style={{ backgroundColor: "var(--bg-surface)" }}>
                   <p
                     style={{ color: "var(--text-muted)" }}
@@ -171,7 +171,7 @@ export default function AIInsightPanel({ analysis }: AIInsightPanelProps) {
                     Resistance
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {analysis.key_levels?.resistance.map((level, i) => (
+                    {analysis.key_levels?.resistance?.map((level, i) => (
                       <span
                         key={i}
                         className="text-sm font-medium px-2 py-1 rounded"
@@ -186,7 +186,7 @@ export default function AIInsightPanel({ analysis }: AIInsightPanelProps) {
                   </div>
                 </div>
               )}
-              {analysis.key_levels?.support.length > 0 && (
+              {(analysis.key_levels?.support?.length ?? 0) > 0 && (
                 <div className="p-3 rounded" style={{ backgroundColor: "var(--bg-surface)" }}>
                   <p
                     style={{ color: "var(--text-muted)" }}
@@ -195,7 +195,7 @@ export default function AIInsightPanel({ analysis }: AIInsightPanelProps) {
                     Support
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {analysis.key_levels?.support.map((level, i) => (
+                    {analysis.key_levels?.support?.map((level, i) => (
                       <span
                         key={i}
                         className="text-sm font-medium px-2 py-1 rounded"
@@ -215,7 +215,7 @@ export default function AIInsightPanel({ analysis }: AIInsightPanelProps) {
         )}
 
         {/* Confluence */}
-        {analysis.confluence && analysis.confluence.factors.length > 0 && (
+        {analysis.confluence && (analysis.confluence.factors?.length ?? 0) > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Zap size={18} style={{ color: "var(--accent-amber)" }} />
@@ -227,7 +227,7 @@ export default function AIInsightPanel({ analysis }: AIInsightPanelProps) {
               className="p-3 rounded space-y-2"
               style={{ backgroundColor: "var(--bg-surface)" }}
             >
-              {analysis.confluence?.factors.map((factor, i) => (
+              {analysis.confluence?.factors?.map((factor, i) => (
                 <div key={i} className="flex items-start gap-2">
                   <span
                     className="text-xs font-medium px-2 py-1 rounded mt-0.5"
@@ -255,7 +255,7 @@ export default function AIInsightPanel({ analysis }: AIInsightPanelProps) {
       </div>
 
       {/* Risk Factors */}
-      {analysis.risk_factors && analysis.risk_factors?.length > 0 && (
+      {analysis.risk_factors && analysis.risk_factors.length > 0 && (
         <div className="mt-6">
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle size={18} style={{ color: "var(--accent-red)" }} />

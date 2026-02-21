@@ -240,7 +240,7 @@ export default function MarketDetailPage() {
                   }}
                 >
                   {change1w >= 0 ? "+" : ""}
-                  {change1w?.toFixed(2)}%
+                  {(change1w ?? 0).toFixed(2)}%
                 </div>
               </div>
             </div>
@@ -531,7 +531,7 @@ export default function MarketDetailPage() {
                         }}
                       >
                         {(item.value ?? 0) >= 0 ? "+" : ""}
-                        {item.value?.toFixed(2) ?? "N/A"}%
+                        {((item.value ?? 0).toFixed(2))}%
                       </p>
                     </div>
                   ))}
@@ -558,15 +558,15 @@ export default function MarketDetailPage() {
                 {[
                   {
                     label: "Total Return",
-                    value: `${analytics.bt_total_return?.toFixed(1) ?? "N/A"}%`,
+                    value: `${((analytics.bt_total_return ?? 0).toFixed(1))}%`,
                   },
                   {
                     label: "Win Rate",
-                    value: `${analytics.bt_win_rate?.toFixed(1) ?? "N/A"}%`,
+                    value: `${((analytics.bt_win_rate ?? 0).toFixed(1))}%`,
                   },
                   {
                     label: "Profit Factor",
-                    value: analytics.bt_profit_factor?.toFixed(2) ?? "N/A",
+                    value: (analytics.bt_profit_factor ?? 0) > 0 ? (analytics.bt_profit_factor ?? 0).toFixed(2) : "N/A",
                   },
                   {
                     label: "Max Drawdown",

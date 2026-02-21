@@ -68,7 +68,7 @@ export default function ResultsPage() {
   // Calculate summary statistics
   const getSummaryStats = () => {
     if (results.length === 0) {
-      return { totalTrades: 0, totalWins: 0, totalLosses: 0, cumulativePnL: 0, bestWeek: null, worstWeek: null, winRate: 0 };
+      return { totalTrades: 0, totalWins: 0, totalLosses: 0, cumulativePnL: 0, bestWeek: 0, worstWeek: 0, winRate: 0 };
     }
 
     const totalTrades = results.reduce((sum, r) => sum + r.total_trades, 0);
