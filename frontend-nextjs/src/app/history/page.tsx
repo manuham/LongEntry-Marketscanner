@@ -41,11 +41,6 @@ const CATEGORY_CONFIG: Record<
     color: "#f59e0b",
     bgColor: "rgba(245, 158, 11, 0.1)",
   },
-  stock: {
-    label: "Stocks",
-    color: "#8b5cf6",
-    bgColor: "rgba(139, 92, 246, 0.1)",
-  },
 };
 
 // Distinct colors for each market
@@ -63,14 +58,6 @@ const SYMBOL_COLORS: Record<string, string> = {
   XAGUSD: "#d97706",
   USOIL: "#ea580c",
   UKOIL: "#f97316",
-  // Stocks — purple/pink
-  AAPL: "#8b5cf6",
-  MSFT: "#a855f7",
-  TSLA: "#d946ef",
-  NVDA: "#c084fc",
-  AMZN: "#e879f9",
-  GOOGL: "#7c3aed",
-  META: "#a78bfa",
 };
 
 function getColor(symbol: string): string {
@@ -105,7 +92,7 @@ export default function PerformancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeCategories, setActiveCategories] = useState<Set<string>>(
-    new Set(["index", "commodity", "stock"])
+    new Set(["index", "commodity"])
   );
   const [activeTab, setActiveTab] = useState<
     "equity" | "weekly" | "breakdown"
@@ -297,7 +284,7 @@ export default function PerformancePage() {
   };
 
   const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { index: 0, commodity: 0, stock: 0 };
+    const counts: Record<string, number> = { index: 0, commodity: 0 };
     markets.forEach((m) => {
       counts[m.category] = (counts[m.category] || 0) + 1;
     });

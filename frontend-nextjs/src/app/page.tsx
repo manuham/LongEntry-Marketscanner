@@ -8,7 +8,6 @@ import {
   getDrawdown,
   getAIPredictions,
   getMaxActiveMarkets,
-  getMaxActiveStocks,
   applyRanking,
   getErrorMessage,
   isAPIException,
@@ -34,7 +33,6 @@ export default function DashboardPage() {
   const [drawdownData, setDrawdownData] = useState<Types.DrawdownItem[]>([]);
   const [predictions, setPredictions] = useState<Types.AIPrediction[]>([]);
   const [maxActiveMarkets, setMaxActiveMarkets] = useState(6);
-  const [maxActiveStocks, setMaxActiveStocks] = useState(3);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
@@ -43,22 +41,20 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const [marketsData, analyticsData, drawdownData, predictionsData, maxMarketsData, maxStocksData] =
+      const [marketsData, analyticsData, drawdownRes, predictionsData, maxMarketsData] =
         await Promise.all([
           getMarkets(),
           getAllAnalytics(),
           getDrawdown(),
           getAIPredictions(),
           getMaxActiveMarkets(),
-          getMaxActiveStocks(),
         ]);
 
       setMarkets(marketsData);
       setAllAnalytics(analyticsData);
-      setDrawdownData(drawdownData);
+      setDrawdownData(drawdownRes);
       setPredictions(predictionsData);
       setMaxActiveMarkets(maxMarketsData.max_active);
-      setMaxActiveStocks(maxStocksData.max_active);
       setLoading(false);
     } catch (err) {
       const message = getErrorMessage(err);
@@ -78,24 +74,18 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Combine data and organize by pool
-  const combineData = (): {
-    indices: CombinedMarketData[];
-    stocks: CombinedMarketData[];
-  } => {
-    const combined: CombinedMarketData[] = markets.map((market) => ({
-      market,
-      analytics:
-        allAnalytics.find((a) => a.symbol === market.symbol) || null,
-      prediction:
-        predictions.find((p) => p.symbol === market.symbol) || null,
-      drawdown: drawdownData.find((d) => d.symbol === market.symbol) || null,
-    }));
-
-    return {
-      indices: combined.filter((d) => d.market.category !== "stock"),
-      stocks: combined.filter((d) => d.market.category === "stock"),
-    };
+  // Combine data — filter out stocks
+  const combinedData = (): CombinedMarketData[] => {
+    return markets
+      .filter((m) => m.category !== "stock")
+      .map((market) => ({
+        market,
+        analytics:
+          allAnalytics.find((a) => a.symbol === market.symbol) || null,
+        prediction:
+          predictions.find((p) => p.symbol === market.symbol) || null,
+        drawdown: drawdownData.find((d) => d.symbol === market.symbol) || null,
+      }));
   };
 
   const sortByRank = (data: CombinedMarketData[]): CombinedMarketData[] => {
@@ -109,14 +99,8 @@ export default function DashboardPage() {
     });
   };
 
-  const { indices, stocks } = combineData();
-  const sortedIndices = sortByRank(indices);
-  const sortedStocks = sortByRank(stocks);
-
-  const activeIndicesCount = indices.filter(
-    (d) => d.analytics?.is_active
-  ).length;
-  const activeStocksCount = stocks.filter((d) => d.analytics?.is_active).length;
+  const data = sortByRank(combinedData());
+  const activeCount = data.filter((d) => d.analytics?.is_active).length;
 
   if (loading) {
     return (
@@ -145,7 +129,7 @@ export default function DashboardPage() {
           className="text-sm"
           style={{ color: "var(--text-muted)" }}
         >
-          {markets.length} markets tracked · {activeIndicesCount + activeStocksCount} active
+          {data.length} markets tracked · {activeCount} active
         </p>
       </div>
 
@@ -179,29 +163,14 @@ export default function DashboardPage() {
       <div className="flex gap-8">
         {/* Main Content */}
         <div className="flex-1 min-w-0">
-          {/* Indices & Commodities Pool */}
           <MarketPool
             title="Indices & Commodities"
-            data={sortedIndices}
-            activeCount={activeIndicesCount}
+            data={data}
+            activeCount={activeCount}
             maxActive={maxActiveMarkets}
             onMaxActiveChange={setMaxActiveMarkets}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
-            isStocks={false}
-            onRefresh={fetchData}
-          />
-
-          {/* Stocks Pool */}
-          <MarketPool
-            title="Stocks"
-            data={sortedStocks}
-            activeCount={activeStocksCount}
-            maxActive={maxActiveStocks}
-            onMaxActiveChange={setMaxActiveStocks}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            isStocks={true}
             onRefresh={fetchData}
           />
         </div>
@@ -223,7 +192,6 @@ interface MarketPoolProps {
   onMaxActiveChange: (value: number) => void;
   viewMode: "grid" | "table";
   onViewModeChange: (mode: "grid" | "table") => void;
-  isStocks: boolean;
   onRefresh: () => void;
 }
 
@@ -235,7 +203,6 @@ function MarketPool({
   onMaxActiveChange,
   viewMode,
   onViewModeChange,
-  isStocks,
   onRefresh,
 }: MarketPoolProps) {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -450,23 +417,21 @@ function MarketPool({
 function SkeletonLoading() {
   return (
     <div className="space-y-8">
-      {[1, 2].map((pool) => (
-        <div key={pool}>
-          <div
-            className="h-12 rounded-xl mb-5 animate-pulse"
-            style={{ backgroundColor: "var(--bg-surface)" }}
-          />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {[1, 2, 3, 4, 5].map((card) => (
-              <div
-                key={card}
-                className="h-56 rounded-xl animate-pulse"
-                style={{ backgroundColor: "var(--bg-card)" }}
-              />
-            ))}
-          </div>
+      <div>
+        <div
+          className="h-12 rounded-xl mb-5 animate-pulse"
+          style={{ backgroundColor: "var(--bg-surface)" }}
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((card) => (
+            <div
+              key={card}
+              className="h-56 rounded-xl animate-pulse"
+              style={{ backgroundColor: "var(--bg-card)" }}
+            />
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }

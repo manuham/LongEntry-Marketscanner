@@ -10,7 +10,7 @@
 export interface Market {
   symbol: string;
   name: string;
-  category: string; // "index" | "commodity" | "stock"
+  category: string; // "index" | "commodity"
   latest_price: number | null;
   latest_time?: string | null;
 }
@@ -38,10 +38,6 @@ export interface MaxActiveResponse {
   active_count: number;
 }
 
-export interface MaxActiveAllResponse {
-  markets: MaxActiveResponse;
-  stocks: MaxActiveResponse;
-}
 
 export interface ApplyRankingResponse {
   max_active: number;

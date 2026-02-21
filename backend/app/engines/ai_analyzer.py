@@ -58,34 +58,7 @@ SESSION_PROFILES = {
                 "notes": "Australia's benchmark. Mining, banks, RBA-sensitive."},
 }
 
-# Add stock profiles
-STOCK_PROFILES = {
-    "AAPL":   {"name": "Apple", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Technology"},
-    "AMZN":   {"name": "Amazon", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Consumer/Cloud"},
-    "BABA":   {"name": "Alibaba", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Technology/China"},
-    "BAC":    {"name": "Bank of America", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Financials"},
-    "GOOG":   {"name": "Alphabet", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Technology"},
-    "META":   {"name": "Meta", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Technology"},
-    "MSFT":   {"name": "Microsoft", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Technology"},
-    "NFLX":   {"name": "Netflix", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Consumer"},
-    "NVDA":   {"name": "NVIDIA", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Technology/AI"},
-    "PFE":    {"name": "Pfizer", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Healthcare"},
-    "T":      {"name": "AT&T", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Telecom"},
-    "TSLA":   {"name": "Tesla", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Automotive/Tech"},
-    "V":      {"name": "Visa", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Financials"},
-    "WMT":    {"name": "Walmart", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Consumer"},
-    "ZM":     {"name": "Zoom", "hours": "15:30-22:00 UTC+2", "type": "stock", "sector": "Technology"},
-    "AIRF":   {"name": "Air France-KLM", "hours": "09:00-17:30 UTC+2", "type": "stock", "sector": "Airlines"},
-    "ALVG":   {"name": "Allianz", "hours": "09:00-17:30 UTC+2", "type": "stock", "sector": "Insurance"},
-    "BAYGn":  {"name": "Bayer", "hours": "09:00-17:30 UTC+2", "type": "stock", "sector": "Pharma/Chemicals"},
-    "DBKGn":  {"name": "Deutsche Bank", "hours": "09:00-17:30 UTC+2", "type": "stock", "sector": "Financials"},
-    "IBE":    {"name": "Iberdrola", "hours": "09:00-17:30 UTC+2", "type": "stock", "sector": "Utilities"},
-    "LVMH":   {"name": "LVMH", "hours": "09:00-17:30 UTC+2", "type": "stock", "sector": "Luxury"},
-    "RACE":   {"name": "Ferrari", "hours": "09:00-17:30 UTC+2", "type": "stock", "sector": "Automotive/Luxury"},
-    "VOWG_p": {"name": "Volkswagen", "hours": "09:00-17:30 UTC+2", "type": "stock", "sector": "Automotive"},
-}
-
-ALL_PROFILES = {**SESSION_PROFILES, **STOCK_PROFILES}
+ALL_PROFILES = {**SESSION_PROFILES}
 
 
 def build_system_prompt(symbol: str, metrics: dict, fundamentals: dict | None,

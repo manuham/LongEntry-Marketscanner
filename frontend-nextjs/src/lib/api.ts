@@ -224,25 +224,6 @@ export async function setMaxActiveMarkets(
   });
 }
 
-/**
- * GET /api/config/max-active-stocks
- * Get max active stocks setting.
- */
-export async function getMaxActiveStocks(): Promise<Types.MaxActiveResponse> {
-  return get<Types.MaxActiveResponse>("/config/max-active-stocks");
-}
-
-/**
- * PUT /api/config/max-active-stocks
- * Set max active stocks and re-rank.
- */
-export async function setMaxActiveStocks(
-  maxActive: number
-): Promise<Types.MaxActiveResponse> {
-  return put<Types.MaxActiveResponse>("/config/max-active-stocks", {
-    max_active: maxActive,
-  });
-}
 
 /**
  * POST /api/override/{symbol}

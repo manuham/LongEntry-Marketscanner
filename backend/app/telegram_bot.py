@@ -486,23 +486,10 @@ class LongEntryBot:
             active_markets = await conn.fetchval(
                 """
                 SELECT COUNT(*) FROM weekly_analysis wa
-                JOIN markets m ON m.symbol = wa.symbol
                 WHERE wa.is_active = true
                   AND wa.week_start = (
                       SELECT MAX(week_start) FROM weekly_analysis WHERE final_score IS NOT NULL
                   )
-                  AND m.category != 'stock'
-                """
-            )
-            active_stocks = await conn.fetchval(
-                """
-                SELECT COUNT(*) FROM weekly_analysis wa
-                JOIN markets m ON m.symbol = wa.symbol
-                WHERE wa.is_active = true
-                  AND wa.week_start = (
-                      SELECT MAX(week_start) FROM weekly_analysis WHERE final_score IS NOT NULL
-                  )
-                  AND m.category = 'stock'
                 """
             )
             latest = await conn.fetchval(
@@ -515,7 +502,6 @@ class LongEntryBot:
         text = (
             "<b>Configuration</b>\n"
             f"├─ Max Active Markets: {settings.max_active_markets} ({active_markets or 0} active)\n"
-            f"├─ Max Active Stocks: {settings.max_active_stocks} ({active_stocks or 0} active)\n"
             f"├─ Min Final Score: {settings.min_final_score}\n"
             f"├─ AI Vision: {ai_status}\n"
             f"├─ Last Analysis: {latest_str}\n"

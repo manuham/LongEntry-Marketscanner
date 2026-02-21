@@ -40,10 +40,6 @@ class MaxActiveResponse(BaseModel):
     active_count: int
 
 
-class MaxActiveAllResponse(BaseModel):
-    markets: MaxActiveResponse
-    stocks: MaxActiveResponse
-
 
 class ApplyRankingResponse(BaseModel):
     max_active: int

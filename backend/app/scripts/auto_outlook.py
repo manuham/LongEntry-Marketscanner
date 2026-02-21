@@ -27,7 +27,7 @@ from app.telegram import send_message
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# All markets the system trades — indices, commodities, and stocks
+# All markets the system trades — indices and commodities
 INDICES_AND_COMMODITIES = {
     "XAUUSD": "Gold",
     "XAGUSD": "Silver",
@@ -45,38 +45,10 @@ INDICES_AND_COMMODITIES = {
     "N25":    "AEX 25 (Netherlands)",
 }
 
-STOCKS = {
-    # US Stocks
-    "AAPL":    "Apple Inc.",
-    "AMZN":    "Amazon.com Inc.",
-    "BABA":    "Alibaba Group",
-    "BAC":     "Bank of America",
-    "GOOG":    "Alphabet Inc. (Google)",
-    "META":    "Meta Platforms",
-    "MSFT":    "Microsoft Corp.",
-    "NFLX":    "Netflix Inc.",
-    "NVDA":    "NVIDIA Corp.",
-    "PFE":     "Pfizer Inc.",
-    "T":       "AT&T Inc.",
-    "TSLA":    "Tesla Inc.",
-    "V":       "Visa Inc.",
-    "WMT":     "Walmart Inc.",
-    "ZM":      "Zoom Video Communications",
-    # European Stocks
-    "AIRF":    "Air France-KLM",
-    "ALVG":    "Allianz SE",
-    "BAYGn":   "Bayer AG",
-    "DBKGn":   "Deutsche Bank AG",
-    "IBE":     "Iberdrola SA",
-    "LVMH":    "LVMH Moët Hennessy",
-    "RACE":    "Ferrari NV",
-    "VOWG_p":  "Volkswagen AG",
-}
+# All markets for store/validation
+MARKETS = {**INDICES_AND_COMMODITIES}
 
-# Combined for store/validation
-MARKETS = {**INDICES_AND_COMMODITIES, **STOCKS}
-
-PROMPT = """You are a professional macro-economic analyst helping a trader decide which stock indices, commodities, and individual stocks are likely to move up next week.
+PROMPT = """You are a professional macro-economic analyst helping a trader decide which stock indices and commodities are likely to move up next week.
 
 Use the web_search tool to research the CURRENT macro environment. Search for:
 1. Central bank rate decisions and forward guidance (Fed, ECB, BoE, BoJ, RBA, HKMA)
@@ -84,8 +56,6 @@ Use the web_search tool to research the CURRENT macro environment. Search for:
 3. Current market sentiment and risk appetite
 4. Any geopolitical events affecting markets
 5. Gold/silver specific drivers (dollar strength, real yields, safe haven demand)
-6. Key earnings reports and company-specific news for the stocks listed below
-7. Sector trends (tech, finance, healthcare, consumer, automotive)
 
 After your research, assess ALL of the following markets for the COMING WEEK.
 For each, give:
@@ -109,36 +79,11 @@ INDICES & COMMODITIES (14):
 - HK50 (Hang Seng 50, Hong Kong)
 - N25 (AEX 25, Netherlands)
 
-STOCKS (23):
-- AAPL (Apple Inc.)
-- AMZN (Amazon.com Inc.)
-- BABA (Alibaba Group)
-- BAC (Bank of America)
-- GOOG (Alphabet Inc.)
-- META (Meta Platforms)
-- MSFT (Microsoft Corp.)
-- NFLX (Netflix Inc.)
-- NVDA (NVIDIA Corp.)
-- PFE (Pfizer Inc.)
-- T (AT&T Inc.)
-- TSLA (Tesla Inc.)
-- V (Visa Inc.)
-- WMT (Walmart Inc.)
-- ZM (Zoom Video Communications)
-- AIRF (Air France-KLM)
-- ALVG (Allianz SE)
-- BAYGn (Bayer AG)
-- DBKGn (Deutsche Bank AG)
-- IBE (Iberdrola SA)
-- LVMH (LVMH Moët Hennessy)
-- RACE (Ferrari NV)
-- VOWG_p (Volkswagen AG)
-
 Respond with ONLY valid JSON (no markdown fences, no explanation outside the JSON):
 {
   "XAUUSD": {"prediction": "bullish", "score": 65, "reasoning": "..."},
   "XAGUSD": {"prediction": "neutral", "score": 50, "reasoning": "..."},
-  ...all 37 markets...
+  ...all 14 markets...
 }
 """
 

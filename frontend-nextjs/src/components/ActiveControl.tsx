@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Plus, Minus } from "lucide-react";
 import {
   setMaxActiveMarkets,
-  setMaxActiveStocks,
   getErrorMessage,
 } from "@/lib/api";
 
@@ -14,7 +13,6 @@ interface ActiveControlProps {
   min?: number;
   max?: number;
   label?: string;
-  isStocks?: boolean;
 }
 
 export default function ActiveControl({
@@ -23,7 +21,6 @@ export default function ActiveControl({
   min = 1,
   max = 14,
   label = "Max Active",
-  isStocks = false,
 }: ActiveControlProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,11 +39,7 @@ export default function ActiveControl({
     setIsLoading(true);
     setError(null);
     try {
-      if (isStocks) {
-        await setMaxActiveStocks(newValue);
-      } else {
-        await setMaxActiveMarkets(newValue);
-      }
+      await setMaxActiveMarkets(newValue);
       onValueChange(newValue);
     } catch (err) {
       setError(getErrorMessage(err));

@@ -530,44 +530,30 @@ async def run_full_analysis() -> list[dict]:
         min_score = await _dynamic_min_score(pool, min_score)
         logger.info("Dynamic min_score: %.1f (base: %.1f)", min_score, settings.min_final_score)
 
-    # Split into category pools
-    stocks = [r for r in scored if symbol_category.get(r["symbol"]) == "stock"]
-    non_stocks = [r for r in scored if symbol_category.get(r["symbol"]) != "stock"]
-
-    stocks.sort(key=lambda r: r["final_score"], reverse=True)
-    non_stocks.sort(key=lambda r: r["final_score"], reverse=True)
+    # Sort by score and assign ranks
+    scored.sort(key=lambda r: r["final_score"], reverse=True)
 
     max_active_markets = settings.max_active_markets
-    max_active_stocks = settings.max_active_stocks
 
-    for rank_idx, m in enumerate(non_stocks):
+    for rank_idx, m in enumerate(scored):
         m["rank"] = int(rank_idx + 1)
         m["final_score"] = float(m["final_score"])
         m["is_active"] = bool((rank_idx < max_active_markets) and (m["final_score"] >= min_score))
 
-    for rank_idx, m in enumerate(stocks):
-        m["rank"] = int(rank_idx + 1)
-        m["final_score"] = float(m["final_score"])
-        m["is_active"] = bool((rank_idx < max_active_stocks) and (m["final_score"] >= min_score))
-
-    all_scored = non_stocks + stocks
-
     # Phase 3: Store all results
-    for m in all_scored:
+    for m in scored:
         try:
             await store_analysis(m)
         except Exception:
             logger.exception("Failed to store analysis for %s", m["symbol"])
 
-    analyzed = len(all_scored)
+    analyzed = len(scored)
     failed = len(results) - analyzed
-    active_markets = sum(1 for m in non_stocks if m.get("is_active"))
-    active_stocks = sum(1 for m in stocks if m.get("is_active"))
+    active_count = sum(1 for m in scored if m.get("is_active"))
     logger.info(
-        "Weekly analysis complete: %d/%d symbols, %d markets active, %d stocks active",
+        "Weekly analysis complete: %d/%d symbols, %d active",
         analyzed,
         len(symbols),
-        active_markets,
-        active_stocks,
+        active_count,
     )
     return results
