@@ -24,6 +24,9 @@ from app.database import get_pool
 from app.engines.backtest import run_backtest_for_symbol
 from app.engines.fundamental import score_symbol as fundamental_score_symbol
 
+# Lazy import to avoid circular dependency — used in run_full_analysis()
+# from app.engines.ai_analyzer import analyze_symbol_with_ai, fetch_ai_analysis
+
 logger = logging.getLogger(__name__)
 
 
@@ -316,10 +319,11 @@ async def store_analysis(metrics: dict) -> None:
                  opt_sl_percent, opt_tp_percent,
                  bt_total_return, bt_win_rate, bt_profit_factor,
                  bt_total_trades, bt_max_drawdown, bt_param_stability,
-                 final_score, rank, is_active)
+                 final_score, rank, is_active,
+                 ai_score, ai_confidence, ai_bias)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
                     $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-                    $21, $22, $23)
+                    $21, $22, $23, $24, $25, $26)
             ON CONFLICT (symbol, week_start)
             DO UPDATE SET
                 technical_score = EXCLUDED.technical_score,
@@ -345,7 +349,10 @@ async def store_analysis(metrics: dict) -> None:
                 is_active = CASE
                     WHEN weekly_analysis.is_manually_overridden THEN weekly_analysis.is_active
                     ELSE EXCLUDED.is_active
-                END
+                END,
+                ai_score = EXCLUDED.ai_score,
+                ai_confidence = EXCLUDED.ai_confidence,
+                ai_bias = EXCLUDED.ai_bias
             """,
             metrics["symbol"],
             metrics["week_start"],
@@ -370,6 +377,9 @@ async def store_analysis(metrics: dict) -> None:
             metrics.get("final_score"),
             metrics.get("rank"),
             metrics.get("is_active", False),
+            metrics.get("ai_score"),
+            metrics.get("ai_confidence"),
+            metrics.get("ai_bias"),
         )
 
 
@@ -378,6 +388,35 @@ def get_current_week_start() -> date:
     today = date.today()
     # Monday = 0, Sunday = 6
     return today - timedelta(days=today.weekday())
+
+
+async def _dynamic_min_score(pool, base_min_score: float) -> float:
+    """Adjust min score threshold based on recent system-wide win rate.
+
+    Rules:
+    - Win rate >= 65% (min 10 trades) → lower to 35 (more aggressive)
+    - Win rate < 40% → raise to 50 (more selective)
+    - Otherwise → keep base threshold
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN pnl_percent > 0 THEN 1 ELSE 0 END) AS wins
+            FROM trades
+            WHERE closed_at > NOW() - INTERVAL '60 days'
+            """
+        )
+
+    if not row or row["total"] < 10:
+        return base_min_score
+
+    win_rate = row["wins"] / row["total"] * 100
+    if win_rate >= 65:
+        return 35.0
+    elif win_rate < 40:
+        return 50.0
+    return base_min_score
 
 
 async def run_full_analysis() -> list[dict]:
@@ -398,8 +437,12 @@ async def run_full_analysis() -> list[dict]:
     # Build symbol→category lookup
     symbol_category = {row["symbol"]: row["category"] for row in symbols}
 
-    # Phase 1: Technical analysis + backtest for each symbol
+    # Lazy import to avoid circular dependency
+    from app.engines.ai_analyzer import analyze_symbol_with_ai, fetch_ai_analysis
+
+    # Phase 1: Technical analysis + backtest + AI vision for each symbol
     results = []
+    total_ai_cost = 0.0
     for row in symbols:
         symbol = row["symbol"]
         try:
@@ -418,32 +461,74 @@ async def run_full_analysis() -> list[dict]:
             fund_score = await fundamental_score_symbol(symbol, week_start)
             metrics["fundamental_score"] = fund_score
 
-            # FinalScore = Technical×0.50 + Backtest×0.35 + Fundamental×0.15
-            # When backtest fails, use neutral 50 instead of 0 so the symbol
-            # isn't unfairly penalised (e.g. insufficient candle data)
-            tech_part = metrics["technical_score"] * 0.50
+            # AI Vision Analysis (if enabled and screenshots available)
+            ai_result = None
+            if settings.ai_vision_enabled:
+                # Try to run AI analysis (will skip if no screenshots)
+                ai_result = await analyze_symbol_with_ai(symbol, week_start)
+                if ai_result is None:
+                    # Check if a previous analysis exists for this week
+                    ai_result = await fetch_ai_analysis(symbol, week_start)
+
+            if ai_result is not None:
+                metrics["ai_score"] = ai_result["ai_score"]
+                metrics["ai_confidence"] = ai_result["ai_confidence"]
+                metrics["ai_bias"] = ai_result["ai_bias"]
+                if ai_result.get("cost_usd"):
+                    total_ai_cost += ai_result["cost_usd"]
+
+            # Compute Final Score
+            # When backtest fails, use neutral 50 instead of 0
             bt_score = bt["backtest_score"] if bt is not None else 50.0
             metrics.setdefault("backtest_score", bt_score)
-            bt_part = bt_score * 0.35
-            fund_part = fund_score * 0.15
-            metrics["final_score"] = round(tech_part + bt_part + fund_part, 1)
+
+            if ai_result is not None:
+                # NEW formula: AI(60%) + Backtest(25%) + Fundamental(15%)
+                ai_part = ai_result["ai_score"] * 0.60
+                bt_part = bt_score * 0.25
+                fund_part = fund_score * 0.15
+                metrics["final_score"] = round(ai_part + bt_part + fund_part, 1)
+                score_breakdown = (
+                    f"AI:{ai_result['ai_score']:.0f} "
+                    f"BT:{bt_score:.0f} "
+                    f"F:{fund_score:.0f}"
+                )
+            else:
+                # Fallback: old formula Technical(50%) + Backtest(35%) + Fundamental(15%)
+                tech_part = metrics["technical_score"] * 0.50
+                bt_part = bt_score * 0.35
+                fund_part = fund_score * 0.15
+                metrics["final_score"] = round(tech_part + bt_part + fund_part, 1)
+                score_breakdown = (
+                    f"T:{metrics['technical_score']:.0f} "
+                    f"BT:{bt_score:.0f} "
+                    f"F:{fund_score:.0f}"
+                )
 
             results.append(metrics)
+            ai_tag = f" [{metrics.get('ai_confidence', 'no-ai').upper()}]" if ai_result else " [NO-AI]"
             logger.info(
-                "Analyzed %s: tech=%.1f, bt=%.1f, fund=%.1f, final=%.1f",
+                "Analyzed %s: %s → final=%.1f%s",
                 symbol,
-                metrics["technical_score"],
-                metrics.get("backtest_score", 0),
-                metrics.get("fundamental_score", 0),
+                score_breakdown,
                 metrics["final_score"],
+                ai_tag,
             )
         except Exception:
             logger.exception("Failed to analyze %s", symbol)
             results.append({"symbol": symbol, "error": "Analysis failed"})
 
+    if total_ai_cost > 0:
+        logger.info("Total AI analysis cost this run: $%.4f", total_ai_cost)
+
     # Phase 2: Rank and activate in separate pools (stocks vs indices/commodities)
     scored = [r for r in results if "error" not in r and "final_score" in r]
+
+    # Dynamic min score threshold based on recent win rate
     min_score = settings.min_final_score
+    if settings.dynamic_min_score_enabled:
+        min_score = await _dynamic_min_score(pool, min_score)
+        logger.info("Dynamic min_score: %.1f (base: %.1f)", min_score, settings.min_final_score)
 
     # Split into category pools
     stocks = [r for r in scored if symbol_category.get(r["symbol"]) == "stock"]

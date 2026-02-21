@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import date, timedelta
 
@@ -60,6 +61,19 @@ async def upload_trades(payload: TradeUploadBatch):
             )
             if "INSERT" in status:
                 inserted += 1
+                # Fetch the trade ID and trigger post-trade review asynchronously
+                trade_id = await conn.fetchval(
+                    """
+                    SELECT id FROM trades
+                    WHERE symbol = $1 AND open_time = $2 AND magic_number = $3
+                    """,
+                    t.symbol,
+                    t.open_time,
+                    t.magic_number,
+                )
+                if trade_id:
+                    from app.engines.post_trade_review import review_closed_trade
+                    asyncio.create_task(review_closed_trade(trade_id))
 
     duplicates = len(payload.trades) - inserted
     logger.info(

@@ -53,18 +53,36 @@ async def main():
                 print(f"  {r['symbol']}: final={r.get('final_score', 0):.1f}{status}")
 
         # Send Telegram notification
+        ai_count = sum(1 for r in results if r.get("ai_score") is not None)
         lines = [f"<b>Weekly Analysis Complete</b>"]
-        lines.append(f"{analyzed} markets analyzed, {failed} failed\n")
+        lines.append(f"{analyzed} markets analyzed, {failed} failed")
+        if ai_count > 0:
+            lines.append(f"AI vision: {ai_count} markets analyzed")
+        lines.append("")
         if active:
             lines.append("<b>Active markets this week:</b>")
             for r in active:
-                lines.append(
-                    f"  #{r.get('rank', '?')} <b>{r['symbol']}</b> — "
-                    f"score {r.get('final_score', 0):.0f} "
-                    f"(T:{r.get('technical_score', 0):.0f} "
-                    f"B:{r.get('backtest_score', 0):.0f} "
-                    f"F:{r.get('fundamental_score', 0):.0f})"
-                )
+                # Show AI score if available, otherwise technical
+                if r.get("ai_score") is not None:
+                    confidence = r.get("ai_confidence", "?").upper()
+                    bias = r.get("ai_bias", "?")
+                    bias_emoji = {"bullish": "↑", "bearish": "↓", "neutral": "→"}.get(bias, "?")
+                    lines.append(
+                        f"  #{r.get('rank', '?')} <b>{r['symbol']}</b> — "
+                        f"score {r.get('final_score', 0):.0f} "
+                        f"[{confidence} {bias_emoji}] "
+                        f"(AI:{r['ai_score']:.0f} "
+                        f"BT:{r.get('backtest_score', 0):.0f} "
+                        f"F:{r.get('fundamental_score', 0):.0f})"
+                    )
+                else:
+                    lines.append(
+                        f"  #{r.get('rank', '?')} <b>{r['symbol']}</b> — "
+                        f"score {r.get('final_score', 0):.0f} "
+                        f"(T:{r.get('technical_score', 0):.0f} "
+                        f"B:{r.get('backtest_score', 0):.0f} "
+                        f"F:{r.get('fundamental_score', 0):.0f})"
+                    )
         else:
             lines.append("No markets activated (all below threshold).")
         if failed > 0:

@@ -1,12 +1,14 @@
+import asyncio
 import logging
 import time
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.database import close_pool, get_pool
 from app.logging_config import setup_logging
-from app.routers import analytics, candles, config, fundamental, health, history, markets, results, trades
+from app.routers import analytics, candles, config, fundamental, health, history, markets, results, screenshots, trades
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -43,10 +45,39 @@ async def startup():
     logger.info("Starting LongEntry Market Scanner API")
     await get_pool()
 
+    # Start Telegram bot if configured
+    if (
+        settings.telegram_bot_token
+        and settings.telegram_chat_id
+        and settings.telegram_bot_enabled
+    ):
+        try:
+            from app.telegram_bot import LongEntryBot, set_bot
+
+            bot = LongEntryBot()
+            set_bot(bot)
+            asyncio.create_task(bot.start())
+            logger.info("Telegram bot launch scheduled")
+        except Exception as e:
+            logger.error("Failed to initialize Telegram bot: %s", e)
+    else:
+        logger.info("Telegram bot disabled or not configured — skipping")
+
 
 @app.on_event("shutdown")
 async def shutdown():
     logger.info("Shutting down")
+
+    # Stop Telegram bot if running
+    try:
+        from app.telegram_bot import get_bot
+
+        bot = get_bot()
+        if bot:
+            await bot.stop()
+    except Exception as e:
+        logger.error("Error stopping Telegram bot: %s", e)
+
     await close_pool()
 
 
@@ -59,3 +90,4 @@ app.include_router(fundamental.router, prefix="/api")
 app.include_router(results.router, prefix="/api")
 app.include_router(trades.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+app.include_router(screenshots.router, prefix="/api")

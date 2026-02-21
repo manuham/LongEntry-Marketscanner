@@ -8,3 +8,8 @@ pandas==2.2.3
 numpy==2.2.1
 anthropic>=0.40.0
 feedparser>=6.0.0
+# Phase 1: AI Vision
+Pillow>=10.2.0
+aiofiles>=23.2.1
+# Phase 2: Telegram Bot
+python-telegram-bot>=21.7

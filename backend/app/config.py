@@ -18,9 +18,23 @@ class Settings(BaseSettings):
     # Anthropic API key for AI-powered outlook
     anthropic_api_key: str = ""
 
-    # Telegram alerts (optional)
+    # Telegram alerts & bot (optional)
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    telegram_bot_enabled: bool = True
+
+    # AI Vision Analysis
+    ai_vision_enabled: bool = True
+    screenshot_dir: str = "/opt/longentry/screenshots"
+    screenshot_quality: int = 85  # JPEG compression quality
+    max_screenshot_size_mb: int = 5
+
+    # Learning loop
+    post_trade_review_enabled: bool = True
+    dynamic_min_score_enabled: bool = True
+
+    # Market context (free external APIs)
+    market_context_enabled: bool = True
 
     model_config = {"env_prefix": "LE_", "env_file": ".env", "frozen": False}
 

@@ -25,6 +25,45 @@ def _current_week_start() -> date:
     return today - timedelta(days=today.weekday())
 
 
+def _calculate_smart_params(ai_confidence: str | None, sl_percent: float, tp_percent: float) -> dict:
+    """Calculate split TP, trailing stop params based on AI confidence."""
+    if not ai_confidence or ai_confidence == "none":
+        return {
+            "tp1_close_pct": 0.5,
+            "tp2_percent": 0.0,
+            "ai_confidence": "none",
+            "use_trailing_stop": False,
+            "trailing_stop_distance": 0.0,
+        }
+
+    conf = ai_confidence.lower()
+
+    if conf == "high":
+        return {
+            "tp1_close_pct": 0.40,  # Close 40% at TP1, let 60% run
+            "tp2_percent": tp_percent * 1.5,  # Extended TP = 1.5x original
+            "ai_confidence": conf,
+            "use_trailing_stop": True,
+            "trailing_stop_distance": sl_percent * 0.5,  # Trail at 50% of SL distance
+        }
+    elif conf == "medium":
+        return {
+            "tp1_close_pct": 0.45,  # Close 45% at TP1
+            "tp2_percent": tp_percent * 1.3,  # Extended TP = 1.3x
+            "ai_confidence": conf,
+            "use_trailing_stop": True,
+            "trailing_stop_distance": sl_percent * 0.6,  # Trail at 60% of SL distance
+        }
+    else:  # low
+        return {
+            "tp1_close_pct": 0.55,  # Close 55% at TP1, more conservative
+            "tp2_percent": tp_percent * 1.15,  # Slight extension only
+            "ai_confidence": conf,
+            "use_trailing_stop": False,  # No trailing for low confidence
+            "trailing_stop_distance": 0.0,
+        }
+
+
 async def _effective_week_start(pool) -> date:
     """Return the most recent week that has scored analysis data.
 
@@ -247,7 +286,7 @@ async def get_config(symbol: str):
         row = await conn.fetchrow(
             """
             SELECT is_active, opt_entry_hour, opt_entry_minute,
-                   opt_sl_percent, opt_tp_percent
+                   opt_sl_percent, opt_tp_percent, ai_confidence
             FROM weekly_analysis
             WHERE symbol = $1 AND week_start = $2
             """,
@@ -257,6 +296,7 @@ async def get_config(symbol: str):
 
     if row is None:
         # No analysis yet — return inactive with defaults
+        smart = _calculate_smart_params(None, 0.0, 0.0)
         return MarketConfigResponse(
             symbol=symbol,
             active=False,
@@ -265,7 +305,19 @@ async def get_config(symbol: str):
             sl_percent=0.0,
             tp_percent=0.0,
             week_start=str(week_start),
+            tp1_close_pct=smart["tp1_close_pct"],
+            tp2_percent=smart["tp2_percent"],
+            ai_confidence=smart["ai_confidence"],
+            use_trailing_stop=smart["use_trailing_stop"],
+            trailing_stop_distance=smart["trailing_stop_distance"],
         )
+
+    # Calculate smart params based on AI confidence
+    smart = _calculate_smart_params(
+        row["ai_confidence"],
+        row["opt_sl_percent"] or 0,
+        row["opt_tp_percent"] or 0
+    )
 
     return MarketConfigResponse(
         symbol=symbol,
@@ -275,6 +327,11 @@ async def get_config(symbol: str):
         sl_percent=row["opt_sl_percent"] or 0.0,
         tp_percent=row["opt_tp_percent"] or 0.0,
         week_start=str(week_start),
+        tp1_close_pct=smart["tp1_close_pct"],
+        tp2_percent=smart["tp2_percent"],
+        ai_confidence=smart["ai_confidence"],
+        use_trailing_stop=smart["use_trailing_stop"],
+        trailing_stop_distance=smart["trailing_stop_distance"],
     )
 
 
@@ -335,7 +392,7 @@ async def override_market(
         row = await conn.fetchrow(
             """
             SELECT is_active, opt_entry_hour, opt_entry_minute,
-                   opt_sl_percent, opt_tp_percent
+                   opt_sl_percent, opt_tp_percent, ai_confidence
             FROM weekly_analysis
             WHERE symbol = $1 AND week_start = $2
             """,
@@ -344,6 +401,7 @@ async def override_market(
         )
 
     if row is None:
+        smart = _calculate_smart_params(None, 0.0, 0.0)
         return MarketConfigResponse(
             symbol=symbol,
             active=False,
@@ -352,7 +410,19 @@ async def override_market(
             sl_percent=0.0,
             tp_percent=0.0,
             week_start=str(week_start),
+            tp1_close_pct=smart["tp1_close_pct"],
+            tp2_percent=smart["tp2_percent"],
+            ai_confidence=smart["ai_confidence"],
+            use_trailing_stop=smart["use_trailing_stop"],
+            trailing_stop_distance=smart["trailing_stop_distance"],
         )
+
+    # Calculate smart params based on AI confidence
+    smart = _calculate_smart_params(
+        row["ai_confidence"],
+        row["opt_sl_percent"] or 0,
+        row["opt_tp_percent"] or 0
+    )
 
     return MarketConfigResponse(
         symbol=symbol,
@@ -362,4 +432,9 @@ async def override_market(
         sl_percent=row["opt_sl_percent"] or 0.0,
         tp_percent=row["opt_tp_percent"] or 0.0,
         week_start=str(week_start),
+        tp1_close_pct=smart["tp1_close_pct"],
+        tp2_percent=smart["tp2_percent"],
+        ai_confidence=smart["ai_confidence"],
+        use_trailing_stop=smart["use_trailing_stop"],
+        trailing_stop_distance=smart["trailing_stop_distance"],
     )
