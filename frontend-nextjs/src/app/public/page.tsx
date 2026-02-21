@@ -310,10 +310,10 @@ export default function PublicPage() {
                         borderRadius: "0.5rem",
                         color: "var(--text-body)",
                       }}
-                      formatter={(value: number) => [
-                        `${value > 0 ? "+" : ""}${value.toFixed(2)}%`,
-                        "Cumulative P&L",
-                      ]}
+                      formatter={(value: string | number | (string | number)[]) => {
+                        const v = Number(value);
+                        return [`${v > 0 ? "+" : ""}${v.toFixed(2)}%`, "Cumulative P&L"];
+                      }}
                     />
                     <Area
                       type="monotone"
