@@ -104,34 +104,14 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen px-6 lg:px-10 py-8">
-        <div style={{ color: "var(--text-heading)" }}>
-          <div className="text-center mb-10">
-            <h1 className="text-3xl font-bold tracking-tight">Market Dashboard</h1>
-          </div>
-          <SkeletonLoading />
-        </div>
+      <div className="min-h-screen px-6 lg:px-10 py-6">
+        <SkeletonLoading />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen px-6 lg:px-10 py-8">
-      {/* Header */}
-      <div className="text-center mb-10">
-        <h1
-          className="text-3xl font-bold tracking-tight mb-2"
-          style={{ color: "var(--text-heading)" }}
-        >
-          Market Dashboard
-        </h1>
-        <p
-          className="text-sm"
-          style={{ color: "var(--text-muted)" }}
-        >
-          {data.length} markets tracked · {activeCount} active
-        </p>
-      </div>
+    <div className="min-h-screen px-6 lg:px-10 py-6">
 
       {/* Error Banner */}
       {error && (
