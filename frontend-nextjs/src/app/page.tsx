@@ -277,6 +277,19 @@ function MarketPool({
 
       {isExpanded && (
         <>
+          {/* Dashboard Title */}
+          <div className="mb-5 flex items-center justify-center">
+            <h1
+              className="text-xl font-semibold tracking-tight"
+              style={{
+                color: "var(--text-heading)",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              Market Dashboard
+            </h1>
+          </div>
+
           {/* Controls */}
           <div className="mb-5 flex items-center justify-between gap-4">
             <ActiveControl

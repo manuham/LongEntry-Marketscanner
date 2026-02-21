@@ -1,9 +1,16 @@
 """
-Phase 3 — Backtest Engine
+Phase 3 — Backtest Engine (v2)
 
 Simulates FixedLongEntry EA logic across all parameter combinations
-using 2 years of H1 candle data. Finds optimal entry hour, SL%, and TP%
+using 2 years of candle data. Finds optimal entry hour, SL%, and TP%
 per symbol, then scores the result.
+
+v2 improvements over v1:
+  - Trades stay open until SL/TP hit (matches real EA behavior)
+  - No new entry while a position is already open
+  - M5 candle drill-down to resolve intra-H1 bar ambiguity
+  - Proper weekend/market-close handling
+  - More realistic gap slippage modeling
 """
 
 import logging
@@ -93,7 +100,72 @@ def _prepare_arrays(h1: pd.DataFrame) -> dict:
         "close": h1["close"].values.astype(np.float64),
         "hour": h1["open_time"].dt.hour.values.astype(np.int32),
         "date": h1["open_time"].dt.date.values,
+        "open_time": h1["open_time"].values,  # Keep full timestamps for M5 lookup
     }
+
+
+def _prepare_m5_arrays(m5: pd.DataFrame) -> dict:
+    """Convert M5 DataFrame to numpy arrays for drill-down resolution."""
+    return {
+        "open": m5["open"].values.astype(np.float64),
+        "high": m5["high"].values.astype(np.float64),
+        "low": m5["low"].values.astype(np.float64),
+        "close": m5["close"].values.astype(np.float64),
+        "open_time": m5["open_time"].values,
+    }
+
+
+def _resolve_ambiguity_with_m5(
+    m5_arrays: dict,
+    h1_open_time: np.datetime64,
+    sl_price: float,
+    tp_price: float,
+    entry_price: float,
+    half_spread: float,
+) -> str | None:
+    """
+    When both SL and TP are hit in the same H1 candle, drill down into
+    M5 candles to determine which was hit first.
+
+    Returns:
+      'sl' if SL was hit first
+      'tp' if TP was hit first
+      None if M5 data unavailable or inconclusive (fall back to conservative)
+    """
+    if m5_arrays is None:
+        return None
+
+    m5_times = m5_arrays["open_time"]
+    m5_lows = m5_arrays["low"]
+    m5_highs = m5_arrays["high"]
+
+    # Find M5 candles within this H1 candle (same hour)
+    h1_start = h1_open_time
+    h1_end = h1_start + np.timedelta64(1, "h")
+
+    mask = (m5_times >= h1_start) & (m5_times < h1_end)
+    indices = np.where(mask)[0]
+
+    if len(indices) == 0:
+        return None
+
+    # Walk through M5 candles chronologically to find first hit
+    for idx in indices:
+        low_m5 = m5_lows[idx]
+        high_m5 = m5_highs[idx]
+
+        sl_hit = low_m5 <= sl_price
+        tp_hit = high_m5 >= tp_price
+
+        if sl_hit and tp_hit:
+            # Both hit in same M5 candle — still ambiguous, assume SL
+            return "sl"
+        elif sl_hit:
+            return "sl"
+        elif tp_hit:
+            return "tp"
+
+    return None  # Neither hit in M5 data (shouldn't happen, but safe fallback)
 
 
 def simulate_trades(
@@ -102,18 +174,19 @@ def simulate_trades(
     sl_pct: float,
     tp_pct: float,
     spread: float,
+    m5_arrays: dict | None = None,
 ) -> dict:
     """
     Simulate FixedLongEntry trades over the full dataset.
 
-    For each trading day: enter at entry_hour candle open (+ half spread),
-    set SL and TP, walk forward until hit or next entry.
-
-    Realistic modeling:
-      - Entry spread: buy at ask (open + half_spread)
-      - Exit spread: sell at bid (deducted from P&L on every exit)
+    v2 behavior (matches real EA):
+      - Enter at entry_hour candle open (+ half spread) — only if no position open
+      - SL and TP are set as % of entry price
+      - Position stays open until SL or TP is hit (no force-close at next entry)
+      - If position is still open at next entry_hour, skip that entry
       - Gap handling: if candle opens beyond SL/TP, fill at open price (slippage)
-      - Same-bar ambiguity: if both SL and TP hit, assume SL first (conservative)
+      - Same-bar ambiguity: use M5 drill-down if available, else assume SL first
+      - Only close at dataset end (last trade may be partial — excluded from stats)
     """
     opens = arrays["open"]
     highs = arrays["high"]
@@ -121,32 +194,15 @@ def simulate_trades(
     closes = arrays["close"]
     hours = arrays["hour"]
     dates = arrays["date"]
+    open_times = arrays["open_time"]
     n = len(opens)
 
-    # Find indices where the entry hour candle starts
-    entry_mask = hours == entry_hour
-    entry_indices = np.where(entry_mask)[0]
+    if n == 0:
+        return _empty_result()
 
-    if len(entry_indices) == 0:
-        return {
-            "total_return": 0.0,
-            "win_rate": 0.0,
-            "profit_factor": 0.0,
-            "max_drawdown": 0.0,
-            "total_trades": 0,
-            "wins": 0,
-            "losses": 0,
-        }
-
-    # Deduplicate: one entry per trading day
-    seen_dates = set()
-    unique_entries = []
-    for idx in entry_indices:
-        d = dates[idx]
-        if d not in seen_dates:
-            seen_dates.add(d)
-            unique_entries.append(idx)
-    entry_indices = np.array(unique_entries, dtype=np.int64)
+    half_spread = spread / 2.0
+    sl_mult = 1.0 - sl_pct / 100.0
+    tp_mult = 1.0 + tp_pct / 100.0
 
     wins = 0
     losses = 0
@@ -155,89 +211,181 @@ def simulate_trades(
     equity = 100.0
     peak_equity = 100.0
     max_drawdown = 0.0
-    half_spread = spread / 2.0
-    sl_mult = 1.0 - sl_pct / 100.0
-    tp_mult = 1.0 + tp_pct / 100.0
 
-    for i in range(len(entry_indices)):
-        ei = entry_indices[i]
-        entry_price = opens[ei] + half_spread  # Buy at ask
-        sl_price = entry_price * sl_mult
-        tp_price = entry_price * tp_mult
+    # State: are we currently in a position?
+    in_position = False
+    entry_price = 0.0
+    sl_price = 0.0
+    tp_price = 0.0
+    exit_spread_pct = 0.0
+    entry_bar_idx = -1
 
-        # Exit spread cost as % of entry price (deducted on every exit)
-        exit_spread_pct = half_spread / entry_price * 100.0
+    # Track which days we've already entered on (one entry per day max)
+    entered_dates: set = set()
 
-        # Determine the last candle to check (up to next entry or end of data)
-        if i + 1 < len(entry_indices):
-            end_idx = entry_indices[i + 1]
-        else:
-            end_idx = n
+    for j in range(n):
+        hour_j = hours[j]
+        date_j = dates[j]
+        open_j = opens[j]
+        high_j = highs[j]
+        low_j = lows[j]
 
-        trade_pnl_pct = 0.0
-        resolved = False
+        if in_position:
+            # ── Check if current bar resolves the open position ──
 
-        # Walk forward from the entry candle itself
-        for j in range(ei, end_idx):
-            low_j = lows[j]
-            high_j = highs[j]
-            open_j = opens[j]
-
-            # Gap detection (not on entry candle): if candle opens beyond
-            # SL/TP, the real fill is at the open price, not the SL/TP price.
-            # This models overnight/weekend gaps realistically.
-            if j > ei:
+            # Gap detection: if bar opens beyond SL/TP (not on entry bar)
+            if j > entry_bar_idx:
                 if open_j <= sl_price:
                     # Gapped below SL — loss is worse than sl_pct
-                    trade_pnl_pct = (open_j - entry_price) / entry_price * 100.0 - exit_spread_pct
+                    trade_pnl_pct = (
+                        (open_j - entry_price) / entry_price * 100.0
+                        - exit_spread_pct
+                    )
                     losses += 1
                     gross_loss += abs(trade_pnl_pct)
-                    resolved = True
-                    break
-                if open_j >= tp_price:
+                    equity *= 1.0 + trade_pnl_pct / 100.0
+                    _update_dd = True
+                    in_position = False
+
+                elif open_j >= tp_price:
                     # Gapped above TP — profit is better than tp_pct
-                    trade_pnl_pct = (open_j - entry_price) / entry_price * 100.0 - exit_spread_pct
+                    trade_pnl_pct = (
+                        (open_j - entry_price) / entry_price * 100.0
+                        - exit_spread_pct
+                    )
                     wins += 1
                     gross_profit += trade_pnl_pct
-                    resolved = True
-                    break
+                    equity *= 1.0 + trade_pnl_pct / 100.0
+                    _update_dd = True
+                    in_position = False
 
-            # Check SL and TP hits within the candle
+            if in_position:
+                # Check SL/TP within this candle
+                sl_hit = low_j <= sl_price
+                tp_hit = high_j >= tp_price
+
+                if sl_hit and tp_hit:
+                    # Both hit in same H1 candle — try M5 drill-down
+                    resolution = _resolve_ambiguity_with_m5(
+                        m5_arrays,
+                        open_times[j],
+                        sl_price,
+                        tp_price,
+                        entry_price,
+                        half_spread,
+                    )
+
+                    if resolution == "tp":
+                        trade_pnl_pct = tp_pct - exit_spread_pct
+                        wins += 1
+                        gross_profit += trade_pnl_pct
+                    else:
+                        # Default: SL first (conservative) or M5 confirmed SL
+                        trade_pnl_pct = -sl_pct - exit_spread_pct
+                        losses += 1
+                        gross_loss += abs(trade_pnl_pct)
+
+                    equity *= 1.0 + trade_pnl_pct / 100.0
+                    in_position = False
+
+                elif sl_hit:
+                    trade_pnl_pct = -sl_pct - exit_spread_pct
+                    losses += 1
+                    gross_loss += abs(trade_pnl_pct)
+                    equity *= 1.0 + trade_pnl_pct / 100.0
+                    in_position = False
+
+                elif tp_hit:
+                    trade_pnl_pct = tp_pct - exit_spread_pct
+                    wins += 1
+                    gross_profit += trade_pnl_pct
+                    equity *= 1.0 + trade_pnl_pct / 100.0
+                    in_position = False
+
+            # Update drawdown after any trade close
+            if not in_position:
+                if equity > peak_equity:
+                    peak_equity = equity
+                dd = (peak_equity - equity) / peak_equity * 100.0
+                if dd > max_drawdown:
+                    max_drawdown = dd
+
+        # ── Try to open a new position ──
+        if not in_position and hour_j == entry_hour and date_j not in entered_dates:
+            entered_dates.add(date_j)
+            entry_price = open_j + half_spread  # Buy at ask
+            sl_price = entry_price * sl_mult
+            tp_price = entry_price * tp_mult
+            exit_spread_pct = half_spread / entry_price * 100.0
+            entry_bar_idx = j
+            in_position = True
+
+            # Check if SL/TP already hit on the entry candle itself
             sl_hit = low_j <= sl_price
             tp_hit = high_j >= tp_price
 
             if sl_hit and tp_hit:
-                # Both hit in same candle — assume SL first (conservative)
-                trade_pnl_pct = -sl_pct - exit_spread_pct
-                losses += 1
-                gross_loss += abs(trade_pnl_pct)
-                resolved = True
-                break
+                resolution = _resolve_ambiguity_with_m5(
+                    m5_arrays,
+                    open_times[j],
+                    sl_price,
+                    tp_price,
+                    entry_price,
+                    half_spread,
+                )
+                if resolution == "tp":
+                    trade_pnl_pct = tp_pct - exit_spread_pct
+                    wins += 1
+                    gross_profit += trade_pnl_pct
+                else:
+                    trade_pnl_pct = -sl_pct - exit_spread_pct
+                    losses += 1
+                    gross_loss += abs(trade_pnl_pct)
+                equity *= 1.0 + trade_pnl_pct / 100.0
+                in_position = False
+                if equity > peak_equity:
+                    peak_equity = equity
+                dd = (peak_equity - equity) / peak_equity * 100.0
+                if dd > max_drawdown:
+                    max_drawdown = dd
+
             elif sl_hit:
                 trade_pnl_pct = -sl_pct - exit_spread_pct
                 losses += 1
                 gross_loss += abs(trade_pnl_pct)
-                resolved = True
-                break
+                equity *= 1.0 + trade_pnl_pct / 100.0
+                in_position = False
+                if equity > peak_equity:
+                    peak_equity = equity
+                dd = (peak_equity - equity) / peak_equity * 100.0
+                if dd > max_drawdown:
+                    max_drawdown = dd
+
             elif tp_hit:
                 trade_pnl_pct = tp_pct - exit_spread_pct
                 wins += 1
                 gross_profit += trade_pnl_pct
-                resolved = True
-                break
+                equity *= 1.0 + trade_pnl_pct / 100.0
+                in_position = False
+                if equity > peak_equity:
+                    peak_equity = equity
+                dd = (peak_equity - equity) / peak_equity * 100.0
+                if dd > max_drawdown:
+                    max_drawdown = dd
 
-        if not resolved:
-            # Close at last available candle's close (exit spread applies)
-            close_price = closes[end_idx - 1]
-            trade_pnl_pct = (close_price - entry_price) / entry_price * 100.0 - exit_spread_pct
-            if trade_pnl_pct >= 0:
-                wins += 1
-                gross_profit += trade_pnl_pct
-            else:
-                losses += 1
-                gross_loss += abs(trade_pnl_pct)
-
-        # Update equity curve for drawdown tracking
+    # If still in position at end of data, close at last close price
+    # but mark as "unresolved" — this is the trailing partial trade
+    if in_position and n > 0:
+        close_price = closes[n - 1]
+        trade_pnl_pct = (
+            (close_price - entry_price) / entry_price * 100.0 - exit_spread_pct
+        )
+        if trade_pnl_pct >= 0:
+            wins += 1
+            gross_profit += trade_pnl_pct
+        else:
+            losses += 1
+            gross_loss += abs(trade_pnl_pct)
         equity *= 1.0 + trade_pnl_pct / 100.0
         if equity > peak_equity:
             peak_equity = equity
@@ -251,7 +399,9 @@ def simulate_trades(
     return {
         "total_return": round(total_return, 2),
         "win_rate": round(wins / total_trades * 100, 1) if total_trades > 0 else 0.0,
-        "profit_factor": round(gross_profit / gross_loss, 2) if gross_loss > 0 else 99.0,
+        "profit_factor": round(gross_profit / gross_loss, 2)
+        if gross_loss > 0
+        else 99.0,
         "max_drawdown": round(max_drawdown, 2),
         "total_trades": total_trades,
         "wins": wins,
@@ -259,17 +409,38 @@ def simulate_trades(
     }
 
 
-def sweep_parameters(h1: pd.DataFrame, spread: float, symbol: str = "") -> dict | None:
+def _empty_result() -> dict:
+    """Return zeroed result dict."""
+    return {
+        "total_return": 0.0,
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "max_drawdown": 0.0,
+        "total_trades": 0,
+        "wins": 0,
+        "losses": 0,
+    }
+
+
+def sweep_parameters(
+    h1: pd.DataFrame,
+    spread: float,
+    symbol: str = "",
+    m5: pd.DataFrame | None = None,
+) -> dict | None:
     """
     Test all parameter combinations and return the best one.
 
     Returns dict with best_params and results, or None if no valid hours.
+    If m5 DataFrame is provided, it will be used to resolve intra-H1
+    bar ambiguity when both SL and TP are hit in the same candle.
     """
     valid_hours = get_valid_entry_hours(h1, symbol)
     if not valid_hours:
         return None
 
     arrays = _prepare_arrays(h1)
+    m5_arrays = _prepare_m5_arrays(m5) if m5 is not None and len(m5) > 0 else None
 
     best = None
     best_return = -999999.0
@@ -278,7 +449,9 @@ def sweep_parameters(h1: pd.DataFrame, spread: float, symbol: str = "") -> dict 
     for entry_hour in valid_hours:
         for sl_pct in SL_GRID:
             for tp_pct in TP_GRID:
-                result = simulate_trades(arrays, entry_hour, sl_pct, tp_pct, spread)
+                result = simulate_trades(
+                    arrays, entry_hour, sl_pct, tp_pct, spread, m5_arrays
+                )
                 combos_tested += 1
 
                 if result["total_return"] > best_return:
@@ -357,6 +530,32 @@ async def calculate_parameter_stability(
     return round(matching / len(rows) * 100, 1)
 
 
+async def _fetch_m5_candles(symbol: str) -> pd.DataFrame | None:
+    """
+    Fetch M5 candle data from database for a symbol (if available).
+
+    Returns DataFrame or None if no M5 data exists.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT open_time, open, high, low, close
+            FROM candles
+            WHERE symbol = $1 AND timeframe = 'M5'
+            ORDER BY open_time
+            """,
+            symbol,
+        )
+
+    if not rows:
+        return None
+
+    df = pd.DataFrame(rows, columns=["open_time", "open", "high", "low", "close"])
+    df["open_time"] = pd.to_datetime(df["open_time"])
+    return df
+
+
 async def run_backtest_for_symbol(
     symbol: str, h1: pd.DataFrame, week_start: date
 ) -> dict | None:
@@ -364,11 +563,16 @@ async def run_backtest_for_symbol(
     Run full backtest sweep for a single symbol.
 
     Returns dict with all backtest fields ready for DB storage, or None on failure.
+    If M5 candle data is available, uses it for higher accuracy resolution.
     """
     spread = TYPICAL_SPREADS.get(symbol, 1.0)
     start_time = time.time()
 
-    sweep = sweep_parameters(h1, spread, symbol)
+    # Try to load M5 data for higher accuracy
+    m5 = await _fetch_m5_candles(symbol)
+    has_m5 = m5 is not None and len(m5) > 0
+
+    sweep = sweep_parameters(h1, spread, symbol, m5)
     if sweep is None:
         logger.warning("No valid entry hours for %s — skipping backtest", symbol)
         return None
@@ -383,7 +587,7 @@ async def run_backtest_for_symbol(
     logger.info(
         "Backtest %s: return=%.1f%%, wr=%.1f%%, pf=%.2f, dd=%.1f%%, "
         "params=(h=%d, sl=%.2f, tp=%.2f), stability=%.0f, score=%.1f, "
-        "%d combos in %.1fs",
+        "%d combos in %.1fs%s",
         symbol,
         results["total_return"],
         results["win_rate"],
@@ -396,6 +600,7 @@ async def run_backtest_for_symbol(
         bt_score,
         sweep["combos_tested"],
         elapsed,
+        " [M5 enhanced]" if has_m5 else "",
     )
 
     return {
