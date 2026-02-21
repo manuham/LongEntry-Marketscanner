@@ -239,13 +239,23 @@ function MarketPool({
   onRefresh,
 }: MarketPoolProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [rankingStatus, setRankingStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [rankingError, setRankingError] = useState<string | null>(null);
 
   const handleApplyRanking = async () => {
+    setRankingStatus("loading");
+    setRankingError(null);
     try {
       await applyRanking();
+      setRankingStatus("success");
       onRefresh();
+      setTimeout(() => setRankingStatus("idle"), 2000);
     } catch (err) {
-      console.error("Failed to apply ranking:", err);
+      const msg = getErrorMessage(err);
+      setRankingError(msg);
+      setRankingStatus("error");
+      console.error("Failed to apply ranking:", msg);
+      setTimeout(() => setRankingStatus("idle"), 4000);
     }
   };
 
@@ -328,17 +338,33 @@ function MarketPool({
               max={data.length}
               label={`Max Active: ${maxActive}`}
             />
-            <button
-              onClick={handleApplyRanking}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{
-                backgroundColor: "var(--accent-blue)",
-                color: "#ffffff",
-                boxShadow: "0 1px 3px rgba(59, 130, 246, 0.3)",
-              }}
-            >
-              Apply Ranking
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleApplyRanking}
+                disabled={rankingStatus === "loading"}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                style={{
+                  backgroundColor: rankingStatus === "success"
+                    ? "var(--accent-green)"
+                    : rankingStatus === "error"
+                      ? "var(--accent-red)"
+                      : "var(--accent-blue)",
+                  color: "#ffffff",
+                  boxShadow: "0 1px 3px rgba(59, 130, 246, 0.3)",
+                  opacity: rankingStatus === "loading" ? 0.6 : 1,
+                }}
+              >
+                {rankingStatus === "loading" ? "Applying..." :
+                 rankingStatus === "success" ? "Applied!" :
+                 rankingStatus === "error" ? "Failed" :
+                 "Apply Ranking"}
+              </button>
+              {rankingError && (
+                <span className="text-xs" style={{ color: "var(--accent-red)" }}>
+                  {rankingError}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Markets Grid/Table */}
