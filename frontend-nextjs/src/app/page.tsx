@@ -209,22 +209,40 @@ function MarketPool({
 
   return (
     <div className="mb-10">
-      {/* Pool Header — three columns: category left, title center, controls right */}
+      {/* Pool Header — CSS Grid: category left, title center, controls right */}
       <div
-        className="relative flex items-center justify-between mb-6 pb-5"
-        style={{ borderBottom: "1px solid var(--border-solid)" }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
+          alignItems: "center",
+          marginBottom: "1.5rem",
+          paddingBottom: "1.25rem",
+          borderBottom: "1px solid var(--border-solid)",
+        }}
       >
         {/* Left: Category + badge */}
-        <div className="flex items-center space-x-3">
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <h2
-            className="text-sm font-semibold uppercase tracking-wider"
-            style={{ color: "var(--text-muted)" }}
+            style={{
+              fontSize: "0.8125rem",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              color: "var(--text-muted)",
+              margin: 0,
+            }}
           >
             {title}
           </h2>
           <div
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.375rem",
+              padding: "0.25rem 0.625rem",
+              borderRadius: "9999px",
+              fontSize: "0.75rem",
+              fontWeight: 500,
               backgroundColor: "rgba(59, 130, 246, 0.1)",
               color: "var(--accent-blue)",
             }}
@@ -236,17 +254,21 @@ function MarketPool({
 
         {/* Center: Dashboard Title */}
         <h1
-          className="text-xl font-bold tracking-tight absolute left-1/2 -translate-x-1/2"
           style={{
-            color: "var(--text-heading)",
+            fontSize: "1.25rem",
+            fontWeight: 700,
             letterSpacing: "-0.02em",
+            color: "var(--text-heading)",
+            margin: 0,
+            textAlign: "center",
+            whiteSpace: "nowrap",
           }}
         >
           Market Dashboard
         </h1>
 
         {/* Right: View toggle + collapse */}
-        <div className="flex items-center space-x-2">
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "flex-end" }}
           <div
             className="flex p-0.5 rounded-lg"
             style={{ backgroundColor: "var(--bg-surface)" }}
