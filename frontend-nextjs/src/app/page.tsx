@@ -122,8 +122,8 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen px-6 lg:px-10 py-8">
         <div style={{ color: "var(--text-heading)" }}>
-          <div className="flex items-center space-x-3 mb-8">
-            <h1 className="text-2xl font-bold tracking-tight">Market Dashboard</h1>
+          <div className="text-center mb-10">
+            <h1 className="text-3xl font-bold tracking-tight">Market Dashboard</h1>
           </div>
           <SkeletonLoading />
         </div>
@@ -134,21 +134,19 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen px-6 lg:px-10 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1
-            className="text-2xl font-bold tracking-tight mb-1"
-            style={{ color: "var(--text-heading)" }}
-          >
-            Market Dashboard
-          </h1>
-          <p
-            className="text-sm"
-            style={{ color: "var(--text-muted)" }}
-          >
-            {markets.length} markets tracked · {activeIndicesCount + activeStocksCount} active
-          </p>
-        </div>
+      <div className="text-center mb-10">
+        <h1
+          className="text-3xl font-bold tracking-tight mb-2"
+          style={{ color: "var(--text-heading)" }}
+        >
+          Market Dashboard
+        </h1>
+        <p
+          className="text-sm"
+          style={{ color: "var(--text-muted)" }}
+        >
+          {markets.length} markets tracked · {activeIndicesCount + activeStocksCount} active
+        </p>
       </div>
 
       {/* Error Banner */}
@@ -345,7 +343,7 @@ function MarketPool({
 
           {/* Markets Grid/Table */}
           {viewMode === "grid" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {data.map((item) => (
                 <MarketCard
                   key={item.market.symbol}
@@ -414,7 +412,7 @@ function SkeletonLoading() {
             className="h-12 rounded-xl mb-5 animate-pulse"
             style={{ backgroundColor: "var(--bg-surface)" }}
           />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {[1, 2, 3, 4, 5].map((card) => (
               <div
                 key={card}

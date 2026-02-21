@@ -29,22 +29,23 @@ export default function Header() {
       }}
     >
       <div className="w-full px-6 lg:px-10">
-        <div className="flex items-center justify-between h-14">
-          {/* Logo */}
+        <div className="flex items-center justify-center h-16 relative">
+          {/* Logo — left side */}
           <Link
             href="/"
-            className="flex items-center space-x-2.5 flex-shrink-0"
+            className="flex items-center space-x-3 absolute left-0"
           >
             <div
-              className="flex items-center justify-center w-8 h-8 rounded-lg"
+              className="flex items-center justify-center w-10 h-10 rounded-xl"
               style={{
                 background: "linear-gradient(135deg, var(--accent-blue), var(--accent-purple))",
+                boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)",
               }}
             >
-              <Activity size={16} color="#ffffff" strokeWidth={2.5} />
+              <Activity size={20} color="#ffffff" strokeWidth={2.5} />
             </div>
             <span
-              className="text-lg font-bold tracking-tight"
+              className="text-xl font-bold tracking-tight"
               style={{ color: "var(--text-heading)" }}
             >
               LongEntry
@@ -54,14 +55,14 @@ export default function Header() {
           {/* Center Navigation */}
           <nav className="flex items-center">
             <div
-              className="flex items-center p-1 rounded-lg gap-0.5"
+              className="flex items-center p-1 rounded-xl gap-0.5"
               style={{ backgroundColor: "var(--bg-surface)" }}
             >
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+                  className="px-5 py-2 rounded-lg text-sm font-medium transition-all"
                   style={{
                     color: isActive(link.href)
                       ? "var(--text-heading)"
@@ -70,7 +71,7 @@ export default function Header() {
                       ? "var(--bg-card)"
                       : "transparent",
                     boxShadow: isActive(link.href)
-                      ? "0 1px 2px rgba(0,0,0,0.15)"
+                      ? "0 1px 3px rgba(0,0,0,0.2)"
                       : "none",
                   }}
                 >
@@ -81,7 +82,7 @@ export default function Header() {
           </nav>
 
           {/* Right side controls */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 absolute right-0">
             <HealthDot />
             <ThemeToggle />
           </div>
