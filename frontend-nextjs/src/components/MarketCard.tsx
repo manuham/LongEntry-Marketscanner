@@ -35,7 +35,6 @@ export default function MarketCard({
     setIsLoading(true);
     setError(null);
     try {
-      // If manually overridden, clear override. Otherwise set opposite of current
       const newActive = analytics?.is_manually_overridden
         ? null
         : !analytics?.is_active;
@@ -53,30 +52,14 @@ export default function MarketCard({
   const isOverridden = analytics?.is_manually_overridden ?? false;
   const change1w = analytics?.change_1w ?? 0;
 
-  // Score color gradient
   const scoreColor = getScoreColor(score);
-  const scoreBackground = getScoreBgColor(score);
-
-  // AI confidence badge
   const confidence = prediction?.score ?? 0;
   const confidenceLevel =
-    confidence >= 0.75
-      ? "HIGH"
-      : confidence >= 0.5
-        ? "MEDIUM"
-        : "LOW";
-  const confidenceBgColor = getConfidenceColor(confidenceLevel);
+    confidence >= 0.75 ? "HIGH" : confidence >= 0.5 ? "MED" : "LOW";
 
-  // AI bias arrow
   const bias = prediction?.prediction ?? "neutral";
-  const biasColor = getBiasColor(bias);
   const biasArrow =
     bias === "bullish" ? "↑" : bias === "bearish" ? "↓" : "→";
-
-  // Score breakdown
-  const technicalWeight = 0.5;
-  const backtestWeight = 0.35;
-  const fundamentalWeight = 0.15;
 
   const technicalScore = analytics?.technical_score ?? 0;
   const backtestScore = analytics?.backtest_score ?? 0;
@@ -85,75 +68,101 @@ export default function MarketCard({
   return (
     <Link href={`/market/${market.symbol}`}>
       <div
-        className="rounded-lg border p-4 transition-all hover:border-opacity-100 cursor-pointer hover:shadow-lg"
+        className="rounded-xl p-4 transition-all cursor-pointer group"
         style={{
           backgroundColor: "var(--bg-card)",
-          borderColor: "var(--border-solid)",
+          border: `1px solid ${isActive ? "rgba(34, 197, 94, 0.2)" : "var(--border-solid)"}`,
+          boxShadow: "var(--shadow-card)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = "var(--shadow-card-hover)";
+          e.currentTarget.style.borderColor = isActive
+            ? "rgba(34, 197, 94, 0.35)"
+            : "var(--border-glow)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = "var(--shadow-card)";
+          e.currentTarget.style.borderColor = isActive
+            ? "rgba(34, 197, 94, 0.2)"
+            : "var(--border-solid)";
         }}
       >
-        {/* Header: Symbol and Price */}
-        <div className="flex items-start justify-between mb-4">
+        {/* Top row: Symbol + Status */}
+        <div className="flex items-start justify-between mb-3">
           <div>
-            <h3
-              className="text-lg font-semibold"
-              style={{ color: "var(--text-heading)" }}
-            >
-              {market.symbol}
-            </h3>
+            <div className="flex items-center space-x-2">
+              <h3
+                className="text-base font-bold tracking-tight"
+                style={{ color: "var(--text-heading)" }}
+              >
+                {market.symbol}
+              </h3>
+              {isActive && (
+                <div
+                  className="w-1.5 h-1.5 rounded-full pulse-active"
+                  style={{ backgroundColor: "var(--accent-green)" }}
+                />
+              )}
+            </div>
             <p
-              className="text-sm"
+              className="text-xs mt-0.5"
               style={{ color: "var(--text-muted)" }}
             >
               {market.name}
             </p>
           </div>
 
-          {/* Active Badge */}
-          {isActive && (
+          {/* Score */}
+          <div className="text-right">
             <div
-              className="px-2 py-1 rounded text-xs font-semibold"
-              style={{
-                backgroundColor: "rgba(16, 185, 129, 0.2)",
-                color: "var(--accent-green)",
-              }}
+              className="text-2xl font-bold leading-none"
+              style={{ color: scoreColor }}
             >
-              ACTIVE
+              {score.toFixed(0)}
             </div>
-          )}
+            <div
+              className="text-[10px] font-medium uppercase mt-0.5"
+              style={{ color: "var(--text-faint)" }}
+            >
+              Score
+            </div>
+          </div>
         </div>
 
-        {/* Price and Change */}
-        <div className="flex items-baseline justify-between mb-4">
-          <div>
-            {market.latest_price !== null && (
-              <div
-                className="text-2xl font-bold"
-                style={{ color: "var(--text-heading)" }}
-              >
-                {(market.latest_price ?? 0).toFixed(2)}
-              </div>
-            )}
-          </div>
+        {/* Score Bar */}
+        <div
+          className="h-1 rounded-full mb-3"
+          style={{ backgroundColor: "var(--bg-surface)" }}
+        >
+          <div
+            className="h-full rounded-full score-bar"
+            style={{
+              width: `${Math.min(score, 100)}%`,
+              backgroundColor: scoreColor,
+            }}
+          />
+        </div>
 
+        {/* Price + Change row */}
+        <div className="flex items-center justify-between mb-3">
+          <div
+            className="text-lg font-semibold"
+            style={{ color: "var(--text-heading)" }}
+          >
+            {market.latest_price !== null
+              ? (market.latest_price ?? 0).toFixed(2)
+              : "—"}
+          </div>
           <div className="flex items-center space-x-1">
             {change1w >= 0 ? (
-              <TrendingUp
-                size={18}
-                style={{ color: "var(--accent-green)" }}
-              />
+              <TrendingUp size={14} style={{ color: "var(--accent-green)" }} />
             ) : (
-              <TrendingDown
-                size={18}
-                style={{ color: "var(--accent-red)" }}
-              />
+              <TrendingDown size={14} style={{ color: "var(--accent-red)" }} />
             )}
             <span
-              className="text-sm font-medium"
+              className="text-xs font-semibold"
               style={{
-                color:
-                  change1w >= 0
-                    ? "var(--accent-green)"
-                    : "var(--accent-red)",
+                color: change1w >= 0 ? "var(--accent-green)" : "var(--accent-red)",
               }}
             >
               {change1w >= 0 ? "+" : ""}
@@ -162,178 +171,66 @@ export default function MarketCard({
           </div>
         </div>
 
-        {/* Final Score */}
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <span
-              className="text-xs font-semibold uppercase"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Final Score
-            </span>
-            <div
-              className="text-3xl font-bold"
-              style={{ color: scoreColor }}
-            >
-              {score.toFixed(0)}
-            </div>
-          </div>
-
-          {/* Score Bar */}
-          <div
-            className="h-1 rounded-full"
-            style={{ backgroundColor: "var(--bg-surface)" }}
-          >
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${Math.min((score / 100) * 100, 100)}%`,
-                backgroundColor: scoreColor,
-              }}
-            />
-          </div>
+        {/* Score Breakdown — compact bars */}
+        <div className="space-y-1.5 mb-3">
+          <ScoreRow label="Technical" value={technicalScore} color="var(--accent-purple)" />
+          <ScoreRow label="Backtest" value={backtestScore} color="var(--accent-blue)" />
+          <ScoreRow label="Fundamental" value={fundamentalScore} color="var(--accent-amber)" />
         </div>
 
         {/* AI Badges */}
-        <div className="flex items-center space-x-2 mb-4">
-          {prediction && (
-            <>
-              <div
-                className="px-2 py-1 rounded text-xs font-semibold"
-                style={{
-                  backgroundColor: confidenceBgColor,
-                  color: "#ffffff",
-                }}
-              >
-                {confidenceLevel}
-              </div>
-
-              <div
-                className="px-2 py-1 rounded text-xs font-semibold"
-                style={{
-                  backgroundColor: biasColor,
-                  color: "#ffffff",
-                }}
-              >
-                {biasArrow} {bias.charAt(0).toUpperCase() + bias.slice(1)}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Score Breakdown Bars */}
-        <div className="mb-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <span
-              className="text-xs font-semibold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Technical + AI
-            </span>
-            <span
-              className="text-xs font-semibold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {technicalScore.toFixed(0)}
-            </span>
-          </div>
-          <div
-            className="h-2 rounded-full"
-            style={{ backgroundColor: "var(--bg-surface)" }}
-          >
+        {prediction && (
+          <div className="flex items-center space-x-1.5 mb-3">
             <div
-              className="h-full rounded-full"
+              className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
               style={{
-                width: `${(technicalScore / 100) * 100}%`,
-                backgroundColor: "var(--accent-purple)",
+                backgroundColor: getConfidenceBg(confidenceLevel),
+                color: getConfidenceText(confidenceLevel),
               }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span
-              className="text-xs font-semibold"
-              style={{ color: "var(--text-muted)" }}
             >
-              Backtest
-            </span>
-            <span
-              className="text-xs font-semibold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {backtestScore.toFixed(0)}
-            </span>
-          </div>
-          <div
-            className="h-2 rounded-full"
-            style={{ backgroundColor: "var(--bg-surface)" }}
-          >
+              {confidenceLevel}
+            </div>
             <div
-              className="h-full rounded-full"
+              className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
               style={{
-                width: `${(backtestScore / 100) * 100}%`,
-                backgroundColor: "var(--accent-blue)",
+                backgroundColor: getBiasBg(bias),
+                color: getBiasText(bias),
               }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <span
-              className="text-xs font-semibold"
-              style={{ color: "var(--text-muted)" }}
             >
-              Fundamental
-            </span>
-            <span
-              className="text-xs font-semibold"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {fundamentalScore.toFixed(0)}
-            </span>
+              {biasArrow} {bias}
+            </div>
           </div>
-          <div
-            className="h-2 rounded-full"
-            style={{ backgroundColor: "var(--bg-surface)" }}
-          >
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${(fundamentalScore / 100) * 100}%`,
-                backgroundColor: "var(--accent-amber)",
-              }}
-            />
-          </div>
-        </div>
+        )}
 
-        {/* Override Indicator */}
+        {/* Override indicator */}
         {isOverridden && (
           <div
-            className="mb-4 p-2 rounded text-xs flex items-center space-x-2"
+            className="mb-3 px-2 py-1 rounded-md text-[10px] flex items-center space-x-1.5 font-medium"
             style={{
-              backgroundColor: "rgba(241, 245, 249, 0.1)",
+              backgroundColor: "rgba(245, 158, 11, 0.08)",
               color: "var(--accent-amber)",
             }}
           >
-            <AlertCircle size={14} />
+            <AlertCircle size={11} />
             <span>Manually overridden</span>
           </div>
         )}
 
-        {/* Active/Off Toggle and More Button */}
-        <div className="flex items-center justify-between gap-2">
+        {/* Toggle + Expand */}
+        <div className="flex items-center gap-2">
           <button
             onClick={(e) => {
               e.preventDefault();
               handleToggleActive();
             }}
             disabled={isLoading}
-            className="flex-1 px-3 py-2 rounded-lg font-medium transition-colors text-sm"
+            className="flex-1 py-1.5 rounded-lg font-medium transition-all text-xs"
             style={{
               backgroundColor: isActive
-                ? "var(--accent-green)"
+                ? "rgba(34, 197, 94, 0.12)"
                 : "var(--bg-surface)",
-              color: isActive ? "#ffffff" : "var(--text-body)",
-              opacity: isLoading ? 0.6 : 1,
+              color: isActive ? "var(--accent-green)" : "var(--text-muted)",
+              opacity: isLoading ? 0.5 : 1,
             }}
           >
             {isLoading ? "..." : isActive ? "Active" : "Off"}
@@ -344,159 +241,54 @@ export default function MarketCard({
               e.preventDefault();
               setIsExpanded(!isExpanded);
             }}
-            className="px-3 py-2 rounded-lg transition-colors"
+            className="p-1.5 rounded-lg transition-colors"
             style={{
               backgroundColor: "var(--bg-surface)",
-              color: "var(--text-body)",
+              color: "var(--text-muted)",
             }}
           >
-            {isExpanded ? (
-              <ChevronUp size={18} />
-            ) : (
-              <ChevronDown size={18} />
-            )}
+            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
 
-        {/* Expandable More Section */}
+        {/* Expandable Section */}
         {isExpanded && (
-          <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--border-solid)" }}>
+          <div
+            className="mt-3 pt-3"
+            style={{ borderTop: "1px solid var(--border-solid)" }}
+          >
             {/* Backtest Details */}
-            <div className="mb-4">
+            <div className="mb-3">
               <h4
-                className="text-sm font-semibold mb-2"
-                style={{ color: "var(--text-heading)" }}
+                className="text-xs font-semibold mb-2 uppercase tracking-wide"
+                style={{ color: "var(--text-faint)" }}
               >
                 Backtest Results
               </h4>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span
-                    className="block"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Win Rate
-                  </span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: "var(--text-heading)" }}
-                  >
-                    {analytics?.bt_win_rate
-                      ? `${(analytics.bt_win_rate * 100).toFixed(0)}%`
-                      : "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span
-                    className="block"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Profit Factor
-                  </span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: "var(--text-heading)" }}
-                  >
-                    {analytics?.bt_profit_factor
-                      ? analytics.bt_profit_factor.toFixed(2)
-                      : "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span
-                    className="block"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Total Return
-                  </span>
-                  <span
-                    className="font-semibold"
-                    style={{
-                      color:
-                        (analytics?.bt_total_return ?? 0) >= 0
-                          ? "var(--accent-green)"
-                          : "var(--accent-red)",
-                    }}
-                  >
-                    {analytics?.bt_total_return
-                      ? `${analytics.bt_total_return.toFixed(1)}%`
-                      : "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span
-                    className="block"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Max Drawdown
-                  </span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: "var(--text-heading)" }}
-                  >
-                    {analytics?.bt_max_drawdown
-                      ? `${analytics.bt_max_drawdown.toFixed(1)}%`
-                      : "N/A"}
-                  </span>
-                </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                <StatItem label="Win Rate" value={analytics?.bt_win_rate ? `${(analytics.bt_win_rate * 100).toFixed(0)}%` : "N/A"} />
+                <StatItem label="P. Factor" value={analytics?.bt_profit_factor ? analytics.bt_profit_factor.toFixed(2) : "N/A"} />
+                <StatItem
+                  label="Return"
+                  value={analytics?.bt_total_return ? `${analytics.bt_total_return.toFixed(1)}%` : "N/A"}
+                  color={(analytics?.bt_total_return ?? 0) >= 0 ? "var(--accent-green)" : "var(--accent-red)"}
+                />
+                <StatItem label="Max DD" value={analytics?.bt_max_drawdown ? `${analytics.bt_max_drawdown.toFixed(1)}%` : "N/A"} />
               </div>
             </div>
 
             {/* Parameters */}
-            <div className="mb-4">
+            <div className="mb-3">
               <h4
-                className="text-sm font-semibold mb-2"
-                style={{ color: "var(--text-heading)" }}
+                className="text-xs font-semibold mb-2 uppercase tracking-wide"
+                style={{ color: "var(--text-faint)" }}
               >
-                Optimal Parameters
+                Optimal Params
               </h4>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <span
-                    className="block"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Entry Hour
-                  </span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: "var(--text-heading)" }}
-                  >
-                    {analytics?.opt_entry_hour ?? "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span
-                    className="block"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    SL%
-                  </span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: "var(--text-heading)" }}
-                  >
-                    {analytics?.opt_sl_percent
-                      ? analytics.opt_sl_percent.toFixed(1)
-                      : "N/A"}
-                  </span>
-                </div>
-                <div>
-                  <span
-                    className="block"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    TP%
-                  </span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: "var(--text-heading)" }}
-                  >
-                    {analytics?.opt_tp_percent
-                      ? analytics.opt_tp_percent.toFixed(1)
-                      : "N/A"}
-                  </span>
-                </div>
+              <div className="grid grid-cols-3 gap-2">
+                <StatItem label="Entry Hour" value={analytics?.opt_entry_hour?.toString() ?? "N/A"} />
+                <StatItem label="SL%" value={analytics?.opt_sl_percent ? analytics.opt_sl_percent.toFixed(1) : "N/A"} />
+                <StatItem label="TP%" value={analytics?.opt_tp_percent ? analytics.opt_tp_percent.toFixed(1) : "N/A"} />
               </div>
             </div>
 
@@ -504,22 +296,19 @@ export default function MarketCard({
             {drawdown && (
               <div>
                 <h4
-                  className="text-sm font-semibold mb-2"
-                  style={{ color: "var(--text-heading)" }}
+                  className="text-xs font-semibold mb-1.5 uppercase tracking-wide"
+                  style={{ color: "var(--text-faint)" }}
                 >
                   Weekly P&L
                 </h4>
                 <div className="flex items-center justify-between">
-                  <span style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-                    {drawdown.week_trades} trades | {drawdown.week_wins} wins
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {drawdown.week_trades} trades · {drawdown.week_wins} wins
                   </span>
                   <span
-                    className="font-semibold"
+                    className="text-sm font-bold"
                     style={{
-                      color:
-                        drawdown.week_pnl_percent >= 0
-                          ? "var(--accent-green)"
-                          : "var(--accent-red)",
+                      color: drawdown.week_pnl_percent >= 0 ? "var(--accent-green)" : "var(--accent-red)",
                     }}
                   >
                     {drawdown.week_pnl_percent >= 0 ? "+" : ""}
@@ -533,7 +322,7 @@ export default function MarketCard({
               <div
                 className="mt-2 p-2 rounded text-xs"
                 style={{
-                  backgroundColor: "rgba(244, 63, 94, 0.1)",
+                  backgroundColor: "rgba(239, 68, 68, 0.08)",
                   color: "var(--accent-red)",
                 }}
               >
@@ -547,42 +336,98 @@ export default function MarketCard({
   );
 }
 
+/* Sub-components */
+
+function ScoreRow({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="flex items-center space-x-2">
+      <span
+        className="text-[10px] font-medium w-16 flex-shrink-0"
+        style={{ color: "var(--text-faint)" }}
+      >
+        {label}
+      </span>
+      <div
+        className="flex-1 h-1 rounded-full"
+        style={{ backgroundColor: "var(--bg-surface)" }}
+      >
+        <div
+          className="h-full rounded-full score-bar"
+          style={{
+            width: `${Math.min(value, 100)}%`,
+            backgroundColor: color,
+            opacity: 0.8,
+          }}
+        />
+      </div>
+      <span
+        className="text-[10px] font-semibold w-6 text-right"
+        style={{ color: "var(--text-muted)" }}
+      >
+        {value.toFixed(0)}
+      </span>
+    </div>
+  );
+}
+
+function StatItem({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div>
+      <span
+        className="text-[10px] block"
+        style={{ color: "var(--text-faint)" }}
+      >
+        {label}
+      </span>
+      <span
+        className="text-xs font-semibold"
+        style={{ color: color ?? "var(--text-heading)" }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/* Color utilities */
+
 function getScoreColor(score: number): string {
   if (score >= 70) return "var(--accent-green)";
-  if (score >= 50) return "#10b981"; // bright green
+  if (score >= 50) return "var(--accent-cyan)";
   if (score >= 30) return "var(--accent-amber)";
   return "var(--accent-red)";
 }
 
-function getScoreBgColor(score: number): string {
-  if (score >= 70) return "rgba(16, 185, 129, 0.1)";
-  if (score >= 50) return "rgba(16, 185, 129, 0.1)";
-  if (score >= 30) return "rgba(245, 158, 11, 0.1)";
-  return "rgba(244, 63, 94, 0.1)";
-}
-
-function getConfidenceColor(level: string): string {
+function getConfidenceBg(level: string): string {
   switch (level) {
-    case "HIGH":
-      return "var(--accent-green)";
-    case "MEDIUM":
-      return "var(--accent-amber)";
-    case "LOW":
-      return "var(--accent-red)";
-    default:
-      return "var(--text-muted)";
+    case "HIGH": return "rgba(34, 197, 94, 0.1)";
+    case "MED": return "rgba(245, 158, 11, 0.1)";
+    case "LOW": return "rgba(239, 68, 68, 0.1)";
+    default: return "rgba(94, 112, 137, 0.1)";
   }
 }
 
-function getBiasColor(bias: string): string {
+function getConfidenceText(level: string): string {
+  switch (level) {
+    case "HIGH": return "var(--accent-green)";
+    case "MED": return "var(--accent-amber)";
+    case "LOW": return "var(--accent-red)";
+    default: return "var(--text-muted)";
+  }
+}
+
+function getBiasBg(bias: string): string {
   switch (bias) {
-    case "bullish":
-      return "var(--accent-green)";
-    case "bearish":
-      return "var(--accent-red)";
-    case "neutral":
-      return "var(--accent-amber)";
-    default:
-      return "var(--text-muted)";
+    case "bullish": return "rgba(34, 197, 94, 0.1)";
+    case "bearish": return "rgba(239, 68, 68, 0.1)";
+    default: return "rgba(245, 158, 11, 0.1)";
+  }
+}
+
+function getBiasText(bias: string): string {
+  switch (bias) {
+    case "bullish": return "var(--accent-green)";
+    case "bearish": return "var(--accent-red)";
+    default: return "var(--accent-amber)";
   }
 }

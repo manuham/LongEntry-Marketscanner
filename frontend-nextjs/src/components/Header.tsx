@@ -2,22 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, Settings } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Activity } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import HealthDot from "./HealthDot";
 
 export default function Header() {
   const pathname = usePathname();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
 
   const isActive = (path: string) => pathname === path;
 
@@ -29,98 +19,73 @@ export default function Header() {
 
   return (
     <header
-      className="sticky top-0 z-50 border-b"
+      className="sticky top-0 z-50"
       style={{
-        backgroundColor: "var(--bg-card)",
-        borderColor: "var(--border-solid)",
+        backgroundColor: "var(--glass-bg)",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        borderBottom: "1px solid var(--glass-border)",
+        boxShadow: "var(--shadow-header)",
       }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="w-full px-6 lg:px-10">
+        <div className="flex items-center justify-between h-14">
           {/* Logo */}
           <Link
             href="/"
-            className="flex items-center space-x-2 flex-shrink-0"
-            style={{ color: "var(--text-heading)" }}
+            className="flex items-center space-x-2.5 flex-shrink-0"
           >
-            <span className="text-2xl font-bold">LongEntry</span>
+            <div
+              className="flex items-center justify-center w-8 h-8 rounded-lg"
+              style={{
+                background: "linear-gradient(135deg, var(--accent-blue), var(--accent-purple))",
+              }}
+            >
+              <Activity size={16} color="#ffffff" strokeWidth={2.5} />
+            </div>
+            <span
+              className="text-lg font-bold tracking-tight"
+              style={{ color: "var(--text-heading)" }}
+            >
+              LongEntry
+            </span>
           </Link>
 
-          {/* Desktop Navigation */}
-          {!isMobile && (
-            <nav className="hidden md:flex items-center space-x-1">
+          {/* Center Navigation */}
+          <nav className="flex items-center">
+            <div
+              className="flex items-center p-1 rounded-lg gap-0.5"
+              style={{ backgroundColor: "var(--bg-surface)" }}
+            >
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                  className="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
                   style={{
                     color: isActive(link.href)
-                      ? "var(--accent-blue)"
-                      : "var(--text-body)",
+                      ? "var(--text-heading)"
+                      : "var(--text-muted)",
                     backgroundColor: isActive(link.href)
-                      ? "var(--bg-hover)"
+                      ? "var(--bg-card)"
                       : "transparent",
+                    boxShadow: isActive(link.href)
+                      ? "0 1px 2px rgba(0,0,0,0.15)"
+                      : "none",
                   }}
                 >
                   {link.label}
                 </Link>
               ))}
-            </nav>
-          )}
+            </div>
+          </nav>
 
           {/* Right side controls */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             <HealthDot />
             <ThemeToggle />
-            <button
-              className="p-2 rounded-md transition-colors hover:opacity-70"
-              style={{ color: "var(--text-muted)" }}
-              aria-label="Settings"
-            >
-              <Settings size={20} />
-            </button>
-
-            {/* Mobile menu button */}
-            {isMobile && (
-              <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 rounded-md transition-colors"
-                style={{ color: "var(--text-body)" }}
-                aria-label="Toggle menu"
-              >
-                {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-              </button>
-            )}
           </div>
         </div>
-
-        {/* Mobile Navigation */}
-        {isMobile && isMenuOpen && (
-          <nav
-            className="md:hidden pb-4"
-            style={{ borderTopColor: "var(--border-solid)" }}
-          >
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="block px-3 py-2 rounded-md text-base font-medium transition-colors"
-                style={{
-                  color: isActive(link.href)
-                    ? "var(--accent-blue)"
-                    : "var(--text-body)",
-                  backgroundColor: isActive(link.href)
-                    ? "var(--bg-hover)"
-                    : "transparent",
-                }}
-                onClick={() => setIsMenuOpen(false)}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        )}
       </div>
     </header>
   );

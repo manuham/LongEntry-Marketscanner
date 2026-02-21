@@ -105,12 +105,11 @@ export default function ResultsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen p-4 sm:p-6 lg:p-8">
+      <div className="min-h-screen px-6 lg:px-10 py-8">
         <div
-          className="max-w-6xl mx-auto"
           style={{ color: "var(--text-heading)" }}
         >
-          <h1 className="text-3xl font-bold mb-8">Performance Results</h1>
+          <h1 className="text-2xl font-bold tracking-tight mb-8">Performance Results</h1>
           <SkeletonLoading />
         </div>
       </div>
@@ -118,8 +117,8 @@ export default function ResultsPage() {
   }
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 lg:p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen px-6 lg:px-10 py-8">
+      <div>
         {/* Header */}
         <div className="mb-8">
           <h1

@@ -120,10 +120,10 @@ export default function MarketDetailPage() {
   if (loading) {
     return (
       <div
-        className="min-h-screen p-4"
+        className="min-h-screen px-6 lg:px-10 py-8"
         style={{ backgroundColor: "var(--bg-base)" }}
       >
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <div className="text-center py-12">
             <p style={{ color: "var(--text-muted)" }}>Loading market data...</p>
           </div>
@@ -135,10 +135,10 @@ export default function MarketDetailPage() {
   if (error || !analytics) {
     return (
       <div
-        className="min-h-screen p-4"
+        className="min-h-screen px-6 lg:px-10 py-8"
         style={{ backgroundColor: "var(--bg-base)" }}
       >
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <Link
             href="/"
             className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-lg transition-colors"
@@ -197,10 +197,10 @@ export default function MarketDetailPage() {
 
   return (
     <div
-      className="min-h-screen p-4"
+      className="min-h-screen px-6 lg:px-10 py-8"
       style={{ backgroundColor: "var(--bg-base)" }}
     >
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         {/* Back Button */}
         <Link
           href="/"

@@ -92,9 +92,9 @@ export default function HistoryPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen p-4 sm:p-6 lg:p-8">
+      <div className="min-h-screen px-6 lg:px-10 py-8">
         <div
-          className="max-w-7xl mx-auto"
+          className="w-full"
           style={{ color: "var(--text-heading)" }}
         >
           <h1 className="text-3xl font-bold mb-8">Analysis History</h1>
@@ -105,8 +105,8 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen px-6 lg:px-10 py-8">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-8">
           <h1

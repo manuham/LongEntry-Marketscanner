@@ -30,14 +30,12 @@ export default function ActiveControl({
 
   const handleIncrement = async () => {
     if (currentValue >= max) return;
-    const newValue = currentValue + 1;
-    await updateValue(newValue);
+    await updateValue(currentValue + 1);
   };
 
   const handleDecrement = async () => {
     if (currentValue <= min) return;
-    const newValue = currentValue - 1;
-    await updateValue(newValue);
+    await updateValue(currentValue - 1);
   };
 
   const updateValue = async (newValue: number) => {
@@ -58,31 +56,40 @@ export default function ActiveControl({
   };
 
   return (
-    <div className="flex items-center space-x-4">
-      <div className="flex items-center space-x-3">
+    <div className="flex items-center space-x-3">
+      <div
+        className="flex items-center rounded-lg overflow-hidden"
+        style={{
+          border: "1px solid var(--border-solid)",
+          backgroundColor: "var(--bg-surface)",
+        }}
+      >
         <button
           onClick={handleDecrement}
           disabled={isLoading || currentValue <= min}
-          className="p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            backgroundColor: "var(--bg-surface)",
-            color: "var(--text-body)",
-          }}
-          title="Decrease"
+          className="px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          style={{ color: "var(--text-body)" }}
           aria-label="Decrease max active"
         >
-          <Minus size={18} />
+          <Minus size={14} />
         </button>
 
-        <div className="text-center min-w-[100px]">
+        <div
+          className="px-4 py-1.5 text-center min-w-[80px]"
+          style={{
+            backgroundColor: "var(--bg-card)",
+            borderLeft: "1px solid var(--border-solid)",
+            borderRight: "1px solid var(--border-solid)",
+          }}
+        >
           <div
-            className="text-xs font-semibold uppercase"
-            style={{ color: "var(--text-muted)" }}
+            className="text-[10px] font-medium uppercase tracking-wide"
+            style={{ color: "var(--text-faint)" }}
           >
-            {label}
+            Max Active
           </div>
           <div
-            className="text-2xl font-bold"
+            className="text-lg font-bold leading-tight"
             style={{ color: "var(--text-heading)" }}
           >
             {currentValue}
@@ -92,24 +99,19 @@ export default function ActiveControl({
         <button
           onClick={handleIncrement}
           disabled={isLoading || currentValue >= max}
-          className="p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            backgroundColor: "var(--bg-surface)",
-            color: "var(--text-body)",
-          }}
-          title="Increase"
+          className="px-2.5 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          style={{ color: "var(--text-body)" }}
           aria-label="Increase max active"
         >
-          <Plus size={18} />
+          <Plus size={14} />
         </button>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div
           className="text-xs px-2 py-1 rounded"
           style={{
-            backgroundColor: "rgba(244, 63, 94, 0.1)",
+            backgroundColor: "rgba(239, 68, 68, 0.08)",
             color: "var(--accent-red)",
           }}
         >
