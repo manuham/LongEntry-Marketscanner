@@ -247,9 +247,22 @@ async def _apply_ranking_for_category(pool, max_active: int, is_stock: bool) -> 
 async def apply_ranking(api_key: str = Depends(require_api_key)):
     """Re-apply ranking for both markets and stocks.
 
-    Activates the top N per category while preserving manual overrides.
+    Clears all manual overrides first, then ranks purely by score.
     """
     pool = await get_pool()
+    week_start = await _effective_week_start(pool)
+
+    # Clear all manual overrides so ranking is purely automatic
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE weekly_analysis
+            SET is_manually_overridden = false
+            WHERE week_start = $1 AND is_manually_overridden = true
+            """,
+            week_start,
+        )
+
     market_count = await _apply_ranking_for_category(pool, settings.max_active_markets, is_stock=False)
     stock_count = await _apply_ranking_for_category(pool, settings.max_active_stocks, is_stock=True)
     total = market_count + stock_count
