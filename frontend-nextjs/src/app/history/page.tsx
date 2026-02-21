@@ -382,13 +382,13 @@ function ScoreTrendsTab({ history, symbols, categoryMap }: ScoreTrendsTabProps) 
                 color: "var(--text-body)",
                 fontSize: "12px",
               }}
-              formatter={(value: any, name: string) => {
+              formatter={(value: any, name?: string) => {
                 if (typeof value === "number") {
-                  return [value.toFixed(1), name];
+                  return [value.toFixed(1), name ?? ""] as [string, string];
                 }
-                return [value, name];
+                return [value, name ?? ""] as [string, string];
               }}
-              labelFormatter={(label: string) => {
+              labelFormatter={(label: any) => {
                 const d = new Date(label);
                 return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
               }}
