@@ -67,22 +67,22 @@ export default function ResultsPage() {
 
   // Calculate summary statistics
   const getSummaryStats = () => {
+    if (results.length === 0) {
+      return { totalTrades: 0, totalWins: 0, totalLosses: 0, cumulativePnL: 0, bestWeek: null, worstWeek: null, winRate: 0 };
+    }
+
     const totalTrades = results.reduce((sum, r) => sum + r.total_trades, 0);
     const totalWins = results.reduce((sum, r) => sum + r.total_wins, 0);
     const totalLosses = results.reduce((sum, r) => sum + r.total_losses, 0);
     const cumulativePnL = results.reduce((sum, r) => sum + r.total_pnl_percent, 0);
 
     const bestWeek = results.reduce((best, current) =>
-      current.total_pnl_percent > (best?.total_pnl_percent ?? -Infinity)
-        ? current
-        : best
-    );
+      current.total_pnl_percent > best.total_pnl_percent ? current : best
+    , results[0]);
 
     const worstWeek = results.reduce((worst, current) =>
-      current.total_pnl_percent < (worst?.total_pnl_percent ?? Infinity)
-        ? current
-        : worst
-    );
+      current.total_pnl_percent < worst.total_pnl_percent ? current : worst
+    , results[0]);
 
     const winRate =
       totalTrades > 0

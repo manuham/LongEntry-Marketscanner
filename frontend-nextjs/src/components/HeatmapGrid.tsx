@@ -35,8 +35,8 @@ function interpolateColor(
 export default function HeatmapGrid({ heatmapData }: HeatmapGridProps) {
   const stats = useMemo(() => {
     const returns = heatmapData.grid.map((cell) => cell.total_return);
-    const min = Math.min(...returns);
-    const max = Math.max(...returns);
+    const min = returns.length > 0 ? Math.min(...returns) : 0;
+    const max = returns.length > 0 ? Math.max(...returns) : 0;
 
     // Find optimal cell (highest return)
     let optimalCell: HeatmapCell | null = null;

@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // All pages need live API data — skip static prerendering at build time
+  output: "standalone",
+
   async rewrites() {
     return [
       {
