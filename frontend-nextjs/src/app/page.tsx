@@ -268,7 +268,7 @@ function MarketPool({
         </h1>
 
         {/* Right: View toggle + collapse */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "flex-end" }}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "flex-end" }}>
           <div
             className="flex p-0.5 rounded-lg"
             style={{ backgroundColor: "var(--bg-surface)" }}
