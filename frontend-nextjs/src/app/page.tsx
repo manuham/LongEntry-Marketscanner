@@ -209,12 +209,16 @@ function MarketPool({
 
   return (
     <div className="mb-10">
-      {/* Pool Header */}
-      <div className="flex items-center justify-between mb-5">
+      {/* Pool Header — three columns: category left, title center, controls right */}
+      <div
+        className="relative flex items-center justify-between mb-6 pb-5"
+        style={{ borderBottom: "1px solid var(--border-solid)" }}
+      >
+        {/* Left: Category + badge */}
         <div className="flex items-center space-x-3">
           <h2
-            className="text-lg font-semibold tracking-tight"
-            style={{ color: "var(--text-heading)" }}
+            className="text-sm font-semibold uppercase tracking-wider"
+            style={{ color: "var(--text-muted)" }}
           >
             {title}
           </h2>
@@ -230,8 +234,19 @@ function MarketPool({
           </div>
         </div>
 
+        {/* Center: Dashboard Title */}
+        <h1
+          className="text-xl font-bold tracking-tight absolute left-1/2 -translate-x-1/2"
+          style={{
+            color: "var(--text-heading)",
+            letterSpacing: "-0.02em",
+          }}
+        >
+          Market Dashboard
+        </h1>
+
+        {/* Right: View toggle + collapse */}
         <div className="flex items-center space-x-2">
-          {/* View Mode Toggle */}
           <div
             className="flex p-0.5 rounded-lg"
             style={{ backgroundColor: "var(--bg-surface)" }}
@@ -262,7 +277,6 @@ function MarketPool({
             </button>
           </div>
 
-          {/* Expand/Collapse */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-1.5 rounded-md transition-colors text-sm"
@@ -277,19 +291,6 @@ function MarketPool({
 
       {isExpanded && (
         <>
-          {/* Dashboard Title */}
-          <div className="mb-5 flex items-center justify-center">
-            <h1
-              className="text-xl font-semibold tracking-tight"
-              style={{
-                color: "var(--text-heading)",
-                letterSpacing: "-0.01em",
-              }}
-            >
-              Market Dashboard
-            </h1>
-          </div>
-
           {/* Controls */}
           <div className="mb-5 flex items-center justify-between gap-4">
             <ActiveControl
