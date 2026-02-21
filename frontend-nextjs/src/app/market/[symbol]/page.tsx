@@ -64,46 +64,31 @@ export default function MarketDetailPage() {
         setLoading(true);
         setError(null);
 
+        // Core data — these must succeed
         const [
           analyticsData,
           tradesData,
-          candlesData,
-          heatmapData,
           predictionsData,
-          screenshotsData,
-          fundamentalsData,
-          eventsData,
         ] = await Promise.all([
           getAnalytics(symbol),
           getTrades(symbol),
-          getCandles(symbol, 500),
-          getBacktestHeatmap(symbol),
           getAIPredictions(),
-          getScreenshots(symbol),
-          getFundamental(),
-          getEconomicEvents(),
         ]);
 
         setAnalytics(analyticsData);
         setTrades(tradesData);
-        setCandles(candlesData);
-        setHeatmap(heatmapData);
         setAIPredictions(predictionsData);
-        setScreenshots(screenshotsData);
-        setFundamentals(fundamentalsData);
-        setEconomicEvents(eventsData);
 
-        // Try to fetch AI analysis, but don't fail if it's 404
-        try {
-          const aiAnalysisData = await getAIAnalysis(symbol);
-          setAIAnalysis(aiAnalysisData);
-        } catch (err) {
-          if (isAPIException(err) && err.status === 404) {
-            // AI analysis not available yet, that's ok
-          } else {
-            console.error("Error fetching AI analysis:", err);
-          }
-        }
+        // Optional data — fetch individually, don't crash if unavailable
+        const optionalFetches = [
+          getCandles(symbol, 500).then(setCandles).catch(() => {}),
+          getBacktestHeatmap(symbol).then(setHeatmap).catch(() => {}),
+          getScreenshots(symbol).then(setScreenshots).catch(() => {}),
+          getFundamental().then(setFundamentals).catch(() => {}),
+          getEconomicEvents().then(setEconomicEvents).catch(() => {}),
+          getAIAnalysis(symbol).then(setAIAnalysis).catch(() => {}),
+        ];
+        await Promise.all(optionalFetches);
       } catch (err) {
         console.error("Error fetching market data:", err);
         setError(getErrorMessage(err));
