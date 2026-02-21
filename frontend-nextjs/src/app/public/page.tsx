@@ -310,7 +310,8 @@ export default function PublicPage() {
                         borderRadius: "0.5rem",
                         color: "var(--text-body)",
                       }}
-                      formatter={(value: string | number | (string | number)[]) => {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      formatter={(value: any) => {
                         const v = Number(value);
                         return [`${v > 0 ? "+" : ""}${v.toFixed(2)}%`, "Cumulative P&L"];
                       }}
