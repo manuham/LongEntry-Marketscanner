@@ -239,6 +239,7 @@ function MarketPool({
   onRefresh,
 }: MarketPoolProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [cardsExpanded, setCardsExpanded] = useState(false);
   const [rankingStatus, setRankingStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [rankingError, setRankingError] = useState<string | null>(null);
 
@@ -367,6 +368,21 @@ function MarketPool({
             </div>
           </div>
 
+          {/* Expand All / Collapse All toggle */}
+          <div className="mb-3 flex justify-end">
+            <button
+              onClick={() => setCardsExpanded(!cardsExpanded)}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all"
+              style={{
+                backgroundColor: "var(--bg-surface)",
+                color: "var(--text-muted)",
+                border: "1px solid var(--border-solid)",
+              }}
+            >
+              {cardsExpanded ? "Collapse All" : "Expand All"}
+            </button>
+          </div>
+
           {/* Markets Grid/Table */}
           {viewMode === "grid" ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -378,6 +394,8 @@ function MarketPool({
                   prediction={item.prediction}
                   drawdown={item.drawdown}
                   onRefresh={onRefresh}
+                  isExpanded={cardsExpanded}
+                  onToggleExpand={() => setCardsExpanded(!cardsExpanded)}
                 />
               ))}
             </div>

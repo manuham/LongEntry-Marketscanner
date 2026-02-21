@@ -19,6 +19,8 @@ interface MarketCardProps {
   prediction: Types.AIPrediction | null;
   drawdown: Types.DrawdownItem | null;
   onRefresh: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }
 
 export default function MarketCard({
@@ -27,8 +29,9 @@ export default function MarketCard({
   prediction,
   drawdown,
   onRefresh,
+  isExpanded,
+  onToggleExpand,
 }: MarketCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -248,7 +251,7 @@ export default function MarketCard({
             <button
               onClick={(e) => {
                 e.preventDefault();
-                setIsExpanded(!isExpanded);
+                onToggleExpand();
               }}
               className="p-2 rounded-lg transition-colors"
               style={{
