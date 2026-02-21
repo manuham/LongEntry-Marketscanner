@@ -82,10 +82,7 @@ export default function PerformanceStats({
     },
     {
       label: "Profit Factor",
-      value:
-        typeof stats.profitFactor === "number"
-          ? stats.profitFactor.toFixed(2)
-          : stats.profitFactor,
+      value: String(stats.profitFactor),
       icon: BarChart3,
       subtext: "Gross Profit / Loss",
       color: "var(--accent-blue)",
